@@ -1,0 +1,41 @@
+[project]
+name = "eiguide"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "clingo>=5.8.1",
+    "pydantic>=2.13.4",
+    "pymupdf>=1.28.2",
+    "rich>=15.0.0",
+    "typer>=0.27.1",
+]
+
+[project.scripts]
+eiguide = "eiguide.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+# Typer expresses repeatable options as mutable defaults; it is the documented idiom.
+"src/eiguide/cli.py" = ["B006"]
+# PyMuPDF's table finder raises a variety of internal errors on malformed pages, and a
+# page without a parseable table must degrade rather than abort a 121-page run.
+"src/eiguide/layout.py" = ["BLE001"]

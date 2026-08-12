@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+data/clauses.jsonl
+data/figures.jsonl
+data/tables.jsonl
+rules/*.lp
