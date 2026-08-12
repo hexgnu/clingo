@@ -68,6 +68,55 @@ def test_ligatures_and_wrapping_survive(clauses):
     assert "fiber" in blob.lower()
 
 
+class TestTextIntegrity:
+    """Corruptions that pass unnoticed because the output still looks like prose.
+
+    Each of these shipped undetected until the corpus was measured rather than sampled.
+    """
+
+    def test_no_word_is_broken_across_a_line_break(self, clauses):
+        """"applica- ble" reads as two tokens to everything downstream.
+
+        34 clauses carried a break like this. The soft-hyphen case was handled; the plain
+        ASCII hyphen was not, and only a corpus-wide count exposed it.
+        """
+        broken = [c.id for c in clauses if re.search(r"[a-z]- [a-z]", c.text)]
+        assert broken == [], f"{len(broken)} clauses with split words, e.g. {broken[:5]}"
+
+    def test_genuine_compounds_survive(self, clauses):
+        """The repair must not fuse a real hyphenated compound into one word."""
+        blob = " ".join(c.text for c in clauses)
+        assert "wholedocument" not in blob.lower()
+        assert re.search(r"\bas-built\b|\bwhole-document\b|\bon-line\b", blob, re.IGNORECASE)
+
+    def test_clauses_are_not_truncated_at_a_page_break(self, clauses):
+        """A clause continuing onto the next page used to lose its tail entirely.
+
+        K.7.11 ended at "...on the same termi-" with the rest dropped. Nothing failed,
+        because a truncated clause is still a plausible-looking clause.
+        """
+        cut = [c.id for c in clauses if c.text.rstrip().endswith("-")]
+        assert cut == [], f"clauses cut mid-word: {cut}"
+
+    def test_every_clause_id_is_unique(self, clauses):
+        """Chapter K numbers three consecutive clauses "2.2" -- a defect in the standard.
+
+        Any lookup keyed by clause id keeps one and silently drops the rest, so two real
+        requirements vanish from citations. Ids must stay unique even when the source is
+        not.
+        """
+        ids = [c.id for c in clauses]
+        assert len(ids) == len(set(ids)), "duplicate clause ids would be silently dropped"
+
+    def test_source_defects_are_reported_not_hidden(self, source_warnings, clauses):
+        assert any("K.2.2" in w for w in source_warnings), source_warnings
+        flagged = [c for c in clauses if c.duplicate_label]
+        assert len(flagged) == len(source_warnings)
+        # The disambiguated clauses must still carry their real, distinct text.
+        texts = {c.text for c in clauses if c.id.startswith("K.2.2")}
+        assert len(texts) == 3, "the three K.2.2 clauses collapsed into one"
+
+
 def test_table_of_contents_is_not_mistaken_for_clauses(clauses):
     for clause in clauses:
         assert not re.search(r"\.{4,}", clause.text), f"TOC leader survived in {clause.id}"
@@ -104,7 +153,7 @@ class TestModality:
 
 
 def test_figures_and_tables_are_captured(extraction):
-    _, figures, tables = extraction
+    _, figures, tables, _ = extraction
     assert len(figures) > 20
     assert any(f.id == "D1" for f in figures)
     assert len(tables) > 5

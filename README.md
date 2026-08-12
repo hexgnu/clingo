@@ -151,6 +151,50 @@ list stays flat, which is what makes an inspection of a real plant tractable at 
 - Only battery strings form sweep groups, so the flat-plan result generalizes to one
   entity type so far.
 
+## Is it actually declarative? Chapter H is the control
+
+Chapter D alone proves nothing — it could be a ruleset tuned until it worked. So Chapter H
+(DC Power) was added as **data only**, deliberately exercising paths Chapter D never
+touches:
+
+| what Chapter H introduces | why it is a real test |
+|---|---|
+| 4 new subject types (cable racks, power cables, bays, circuits) | the Python has never heard of any of them |
+| `measurement` observations | tape measure, not camera — and correctly refuses to bundle |
+| gauge-conditional thresholds | `H.10.7` gives 2 ft for 1/0-and-smaller, 3 ft for 2/0-and-larger, from one clause |
+| a sweep group that is not a battery string | the sweep tier was written for batteries; a cable rack is nothing like one |
+
+Everything worked. **Zero lines of Python changed** — only `data/golden/chapter_h.jsonl`,
+a new site file, and 31 lines of declarative vocabulary in `ontology/domain.lp`:
+
+```
+sweep(rk1,photo) · cost 10 · settles H.10.5, H.10.6, H.10.9 across all 8 cables on rk1
+capture(pc1,unsupported_span_under_2ft)   ← 1/0 and smaller
+capture(pc3,unsupported_span_under_3ft)   ← 2/0 and larger
+```
+
+`test_the_pipeline_knows_nothing_about_either_chapter` enforces this permanently: it
+tokenizes every pipeline module and fails if any domain term (`cable_rack`, `battery_string`,
+`D.6.`, …) appears in executable code. Documentation may cite examples; code may not.
+
+## Site files are validated
+
+ASP fails silently on the most common hand-authoring mistake. This:
+
+```prolog
+on_rack(pc1;pc2;pc3, rk1).
+```
+
+looks like three cables on a rack. It actually asserts `on_rack(pc1)`, `on_rack(pc2)` and
+`on_rack(pc3, rk1)` — the `;` splits the atom, not the argument. Clingo reports nothing, and
+seven of nine cables silently vanished from a real plan during development. `eiguide plan`
+and `eiguide inspect` now refuse to stay quiet about it:
+
+```
+site warning: on_rack(pc1;pc2;pc3, rk1) uses ';' in a multi-argument predicate...
+site warning: power_cabel/1 appears in no rule or ontology declaration — either a typo or...
+```
+
 ## Layout recovery is inferred, not hardcoded
 
 `layout.py` knows nothing about this document. It derives structure from signals any
@@ -216,13 +260,24 @@ data/golden/    hand-authored, reviewed rules for Chapter D §6
 ## Tests
 
 ```bash
-uv run pytest        # 46 tests, ~37s (parses the real PDF once)
+uv run pytest                                   # 87 tests, ~30s
+uv run pytest --cov=eiguide --cov-report=term   # 93% line coverage
 ```
 
-They pin the claims rather than the implementation: that an unobserved site is never
-reported compliant, that carve-outs suppress the requirements they waive, that one sweep
-beats 24 photos, that a single bad cell violates only that cell, and that no evidence gap
-is ever silently dropped from a plan.
+| file | n | what it pins |
+|---|---:|---|
+| `test_extract.py` | 21 | clause fidelity and text integrity against the real PDF |
+| `test_reasoning.py` | 19 | three-valued verdicts, carve-outs, exemption wiring |
+| `test_cli.py` | 15 | the answer loop, group-failure drill-down, read-only guarantees |
+| `test_entities.py` | 13 | thresholds, label literals, negations |
+| `test_concept.py` | 12 | Chapter H as data-only; site validation |
+| `test_prove.py` | 7 | the solver's claims against their controls |
+
+They pin claims, not implementation. Three corpus-wide integrity checks exist because each
+caught a bug that a sampled test could not: 34 clauses with words split across a line break
+(`applica- ble`), 38 clauses truncated at a page boundary, and three clauses sharing an id
+because the standard itself numbers them all "2.2" — which silently dropped two from every
+citation lookup.
 
 ## Status / next
 

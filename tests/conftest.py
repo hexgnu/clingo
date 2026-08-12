@@ -26,6 +26,11 @@ def clauses(extraction):
 
 
 @pytest.fixture(scope="session")
+def source_warnings(extraction):
+    return extraction[3]
+
+
+@pytest.fixture(scope="session")
 def clause_index(clauses):
     return {c.id: c for c in clauses}
 

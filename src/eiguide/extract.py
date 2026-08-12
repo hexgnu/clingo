@@ -79,9 +79,15 @@ def _chapter_of(page_label: str) -> str:
 
 def extract(
     pdf_path: Path, doc_name: str = "EIGuide", doc_version: str = "6.0"
-) -> tuple[list[Clause], list[Figure], list[TableData]]:
-    """Recover every numbered clause, captioned figure and table from the document."""
+) -> tuple[list[Clause], list[Figure], list[TableData], list[str]]:
+    """Recover every numbered clause, captioned figure and table from the document.
+
+    Returns the artifacts plus any warnings about the source document itself -- currently
+    repeated clause numbers, which are the standard's own defects rather than parsing
+    failures, but which callers must know about.
+    """
     doc = pymupdf.open(pdf_path)
+    warnings: list[str] = []
     try:
         lay = layout.analyze(doc)
         chapter_titles = _chapter_titles(lay)
@@ -111,10 +117,8 @@ def extract(
                 continue
 
             if para.label is None:
-                # Unlabelled prose continues the clause above it, but only within the same
-                # page-label scope -- otherwise stray captions and callouts leak across
-                # chapter boundaries.
-                if pending is not None and pending.page_label == para.page_label:
+                # Unlabelled prose continues the clause above it.
+                if pending is not None and _continues(pending, para, chapter):
                     pending.text = f"{pending.text} {para.text}".strip()
                 continue
 
@@ -142,10 +146,17 @@ def extract(
             clauses.append(clause)
             pending = clause
 
-        # Modality and codes are computed only after every continuation has been merged,
-        # so a clause whose "shall" falls in its second paragraph is still classified right.
+        # Text repairs run over the whole corpus before anything is derived from it:
+        # hyphenation needs the document's own vocabulary, and modality must be judged on
+        # the finished text, not on a fragment that stopped at a page break.
         for clause in clauses:
             clause.text = _tidy(clause.text)
+        _repair_hyphenation(clauses)
+        collisions = _disambiguate_labels(clauses)
+        if collisions:
+            warnings.extend(collisions)
+
+        for clause in clauses:
             clause.modality = classify_modality(clause.text)
             codes = extract_codes(clause.text)
             clause.codes = codes.as_dict()
@@ -160,9 +171,80 @@ def extract(
             TableData(page=t.page, page_label=t.page_label, chapter=_chapter_of(t.page_label), rows=t.rows)
             for t in lay.tables
         ]
-        return clauses, figures, tables
+        return clauses, figures, tables, warnings
     finally:
         doc.close()
+
+
+TERMINAL = (".", ":", ";", "!", "?")
+
+
+def _continues(pending: Clause, para: layout.Paragraph, chapter: str) -> bool:
+    """Whether an unlabelled paragraph carries on the clause above it.
+
+    Within a page this is unambiguous. Across a page break it is a judgement call, and
+    refusing to cross was losing the tail of roughly one clause in fifteen -- a clause that
+    ends "...on the same termi-" is plainly unfinished. Requiring the pending text to lack
+    terminal punctuation keeps stray captions and callouts on the next page from being
+    glued on, while letting genuine continuations through.
+    """
+    if pending.chapter != chapter:
+        return False
+    if pending.page_label == para.page_label:
+        return True
+    return not pending.text.rstrip().rstrip("\xad").endswith(TERMINAL)
+
+
+HYPHEN_BREAK_RE = re.compile(r"([A-Za-z]{2,})-\s+([a-z]{2,})")
+
+
+def _repair_hyphenation(clauses: list[Clause]) -> None:
+    """Rejoin words split across a line break by an ordinary hyphen.
+
+    The document breaks words two ways. A soft hyphen (U+00AD) is unambiguous and handled
+    in ``_tidy``. An ASCII hyphen is not: it appears both in "applica- ble", where the word
+    continues, and in "whole- document", where the hyphen is real. Guessing wrong either
+    corrupts a term or fuses two.
+
+    The document resolves its own ambiguity. If the joined form occurs anywhere else in the
+    corpus as a single word, the break was soft; otherwise the hyphen is genuine and only
+    the stray space is removed. No external lexicon is needed.
+    """
+    vocabulary: set[str] = set()
+    for clause in clauses:
+        vocabulary.update(re.findall(r"[a-z]{3,}", clause.text.lower()))
+
+    def rejoin(m: re.Match[str]) -> str:
+        head, tail = m.group(1), m.group(2)
+        if (head + tail).lower() in vocabulary:
+            return head + tail
+        return f"{head}-{tail}"
+
+    for clause in clauses:
+        clause.text = HYPHEN_BREAK_RE.sub(rejoin, clause.text)
+
+
+def _disambiguate_labels(clauses: list[Clause]) -> list[str]:
+    """Give every clause a unique id, even when the source document repeats one.
+
+    Chapter K really does number three consecutive clauses "2.2" -- a typo in the standard,
+    not a parsing error. Left alone it is silently destructive: every lookup keyed by
+    clause id keeps one record and drops the rest, so two genuine requirements disappear
+    from citations without a trace. Suffixing keeps them addressable and reports the
+    collision rather than hiding it.
+    """
+    seen: dict[str, int] = {}
+    collisions: list[str] = []
+    for clause in clauses:
+        base = clause.id
+        if base not in seen:
+            seen[base] = 1
+            continue
+        seen[base] += 1
+        clause.id = f"{base}#{seen[base]}"
+        clause.duplicate_label = True
+        collisions.append(f"{base} repeated on page {clause.page_label} -> {clause.id}")
+    return collisions
 
 
 def _tidy(text: str) -> str:

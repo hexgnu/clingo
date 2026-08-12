@@ -32,6 +32,7 @@ from rich.table import Table
 from . import compile as compile_mod
 from . import prove as prove_mod
 from . import reason
+from . import validate as validate_mod
 from .extract import extract as run_extract
 from .models import Clause, Observation, Rule
 from .store import read_jsonl, write_json, write_jsonl
@@ -79,7 +80,9 @@ def extract(
     version: str = "6.0",
 ) -> None:
     """Recover clauses, figures and tables from the PDF."""
-    clauses, figures, tables = run_extract(pdf, doc_name=doc, doc_version=version)
+    clauses, figures, tables, warnings = run_extract(pdf, doc_name=doc, doc_version=version)
+    for warning in warnings:
+        console.print(f"[yellow]source document:[/yellow] {warning}")
     n = write_jsonl(out, clauses)
     write_jsonl(out.with_name("figures.jsonl"), figures)
     write_jsonl(out.with_name("tables.jsonl"), tables)
@@ -136,6 +139,19 @@ def compile(
         console.print(f"[yellow]{unreviewed} rule(s) not yet reviewed[/yellow]")
 
 
+def _check_site(site: Path, programs: list[Path]) -> None:
+    """Warn loudly about site facts that cannot affect any verdict.
+
+    A silently-ignored fact produces a plan that looks complete and is not, which is the
+    one outcome this whole system is built to avoid.
+    """
+    problems = validate_mod.validate_site(site, programs)
+    for problem in problems:
+        console.print(f"[bold yellow]site warning:[/bold yellow] {problem}")
+    if problems:
+        console.print()
+
+
 def _programs(chapters: list[str]) -> list[Path]:
     files = [ONTOLOGY / "core.lp", ONTOLOGY / "domain.lp"]
     for ch in chapters:
@@ -158,7 +174,9 @@ def plan(
 
     Read-only. Writes nothing unless asked with --out.
     """
-    model = reason.solve(_programs(chapter) + [site], "")
+    programs = _programs(chapter)
+    _check_site(site, programs)
+    model = reason.solve(programs + [site], "")
 
     rules = _load_rules(DATA / "rules.jsonl", chapter)
     clauses = _clause_for_rule(_load_clauses(clauses_file), rules)
@@ -213,7 +231,9 @@ def inspect(
     no walk at all, because the next run silently inherits it and reports a site as
     inspected when it was not.
     """
-    programs = _programs(chapter) + [site]
+    programs = _programs(chapter)
+    _check_site(site, programs)
+    programs = programs + [site]
     rules = _load_rules(DATA / "rules.jsonl", chapter)
     clauses = _clause_for_rule(_load_clauses(clauses_file), rules)
     acceptance = reason.acceptance_index(rules)
@@ -391,9 +411,12 @@ def _print_rollup(verdicts, clauses, site_name: str, n_obs: int) -> None:
     table = Table(title=f"{site_name} — {n_obs} observations, {len(by_rule)} requirements")
     # One line per requirement. A verdict table is scanned, not read.
     table.add_column("Rule", no_wrap=True, min_width=6)
-    table.add_column("Requirement", width=26, no_wrap=True, overflow="ellipsis")
+    table.add_column("Requirement", width=22, no_wrap=True, overflow="ellipsis")
     table.add_column("n", justify="right", width=3)
-    table.add_column("Outcome", no_wrap=True, overflow="ellipsis", width=32)
+    # Outcome must never be clipped. Truncating "2/24 violated cell(bs1,7), cell(..."
+    # hides the only part of the verdict anyone acts on, so compliant rows stay on one
+    # line and failing rows are allowed to wrap as far as they need.
+    table.add_column("Outcome", min_width=36, overflow="fold")
 
     def rank(item: tuple[str, dict[str, list[str]]]) -> tuple:
         _, buckets = item
@@ -406,12 +429,12 @@ def _print_rollup(verdicts, clauses, site_name: str, n_obs: int) -> None:
         if buckets["violated"]:
             outcome = (
                 f"[bold red]{len(buckets['violated'])}/{total} violated[/bold red] "
-                f"{_name_subjects(sorted(buckets['violated']), 3)}"
+                f"{_name_subjects(sorted(buckets['violated']), 12)}"
             )
         elif buckets["undetermined"]:
             outcome = (
                 f"[yellow]{len(buckets['undetermined'])}/{total} unchecked[/yellow] "
-                f"{_name_subjects(sorted(buckets['undetermined']), 3)}"
+                f"{_name_subjects(sorted(buckets['undetermined']), 12)}"
             )
         else:
             outcome = f"[green]{total}/{total} ok[/green]"

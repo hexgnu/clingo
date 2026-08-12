@@ -42,10 +42,37 @@ subject(S) :- battery_string(S).
 subject(P) :- fuse_panel(P).
 subject(L) :- lead(L).
 
-% A battery string is the natural sweep group for its cells: one pass down the row sees
-% every cell face. This is what lets the solver collapse per-cell checks into one action.
+% Chapter H vocabulary. Added as declarations, not code.
+#defined cable_rack/1.
+#defined power_cable/1.
+#defined on_rack/2.
+#defined leaves_rack/1.
+#defined has_exposed_end/1.
+#defined gauge_1_0_or_smaller/1.
+#defined gauge_2_0_or_larger/1.
+#defined power_bay/1.
+#defined distribution_circuit/1.
+
+subject(R) :- cable_rack(R).
+subject(C) :- power_cable(C).
+subject(B) :- power_bay(B).
+subject(X) :- distribution_circuit(X).
+
+% ---------------------------------------------------------------------------
+% Sweep groups
+% ---------------------------------------------------------------------------
+% A group is any set of subjects one physical pass can observe together. Nothing about
+% the notion is specific to batteries -- it just needs a container and its members.
+
+% A battery string: one pass down the row sees every cell face.
 group(S) :- battery_string(S).
 member(S, cell(S, C)) :- cell(S, C).
+
+% A cable rack: one pass along the rack sees every cable on it. Declared exactly like the
+% battery string above, which is the test of whether the sweep machinery was general or
+% just fitted to the first case.
+group(R) :- cable_rack(R).
+member(R, C) :- on_rack(C, R).
 
 % ---------------------------------------------------------------------------
 % Capture actions

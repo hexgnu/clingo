@@ -59,6 +59,9 @@ class Clause(BaseModel):
     codes: dict[str, object] = Field(default_factory=dict)
     """Machine-usable tokens found in the prose: quantities, verbatim label literals,
     gauges, designators, cross-references, carve-outs. See ``entities.Codes``."""
+    duplicate_label: bool = False
+    """True when the source document reused this clause number. The id carries a suffix so
+    the clause stays addressable; the flag records that the standard itself is ambiguous."""
     doc: str = "EIGuide"
     doc_version: str = "6.0"
 
