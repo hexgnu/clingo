@@ -1,0 +1,18 @@
+{
+  "ticket_id": "SAMS-4471",
+  "source": "samsung_nms",
+  "kind": "alarm",
+  "received_day": 240,
+  "asset_id": "rtr_den_042",
+  "asset_vendor_ref": "SS-DEN-042",
+  "alarms": [
+    {"code": "LOS-A1", "raised_day": 240, "severity": "critical"},
+    {"code": "NODE-UNREACH", "raised_day": 240, "severity": "major"}
+  ],
+  "facts": [
+    {"source": "onevizion", "fact": "site_location_known", "confidence": 95, "as_of_day": 235},
+    {"source": "onevizion", "fact": "upstream_node_known", "confidence": 90, "as_of_day": 230},
+    {"source": "onevizion", "fact": "uplink_span_known",   "confidence": 85, "as_of_day": 110},
+    {"source": "onevizion", "fact": "golden_config_known", "confidence": 60, "as_of_day": 238}
+  ]
+}

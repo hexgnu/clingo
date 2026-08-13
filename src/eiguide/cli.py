@@ -32,10 +32,12 @@ from rich.table import Table
 from . import compile as compile_mod
 from . import prove as prove_mod
 from . import reason
+from . import triage as triage_mod
 from . import validate as validate_mod
 from .extract import extract as run_extract
 from .models import Clause, Observation, Rule
 from .store import read_jsonl, write_json, write_jsonl
+from .ticket import Ticket
 
 app = typer.Typer(add_completion=False, help="Compliance reasoning over installation standards.")
 console = Console()
@@ -527,6 +529,80 @@ def prove(
     wins = sum(1 for r in results if r.verdict.startswith(("SOLVER WINS", "PASS")))
     console.print()
     console.print(f"[bold]{wins}/{len(results)} claims hold up.[/bold]")
+
+
+KNOWLEDGE = ROOT / "knowledge"
+
+
+@app.command()
+def triage(
+    ticket_file: Annotated[Path, typer.Argument(help="Inbound ticket JSON.")],
+    knowledge: Annotated[list[Path] | None, typer.Option(help="Knowledge bases (.lp).")] = None,
+    results: Annotated[Path | None, typer.Option(help="Known test results as JSON.")] = None,
+    out: Annotated[Path | None, typer.Option(help="Write the answer as JSON.")] = None,
+) -> None:
+    """Diagnose a ticket: what explains it, and the cheapest way to find out.
+
+    One solve over whatever is known so far. Feed results back with --results to advance
+    the ticket; the answer is always derived from the full evidence, never accumulated.
+    """
+    ticket = Ticket.load(ticket_file)
+    kb = list(knowledge) if knowledge else sorted(KNOWLEDGE.glob("*.lp"))
+    known = json.loads(results.read_text()) if results else {}
+    evidence = triage_mod.evidence_facts(known.get("tests", {}), known.get("records", {}))
+
+    model = triage_mod.solve(ticket, kb, evidence, ROOT)
+    answer = triage_mod.to_result(ticket, model)
+
+    console.print(
+        Panel(
+            f"[bold]{ticket.ticket_id}[/bold] from {ticket.source} · "
+            f"{', '.join(a.code for a in ticket.alarms)}",
+            title="SOLVED" if answer.solved else "OPEN",
+        )
+    )
+    if answer.unrecognized_codes:
+        codes = ", ".join(answer.unrecognized_codes)
+        console.print(
+            f"[bold red]unrecognized alarm codes:[/bold red] {codes} — "
+            f"no diagnosis can be complete until these are mapped"
+        )
+    if answer.candidates:
+        table = Table(show_header=True)
+        table.add_column("explanation")
+        table.add_column("status")
+        for h in answer.candidates:
+            table.add_row(
+                h,
+                "[yellow]provisional — rests on an unverified record[/yellow]"
+                if h in answer.provisional
+                else "[cyan]live[/cyan]",
+            )
+        console.print(table)
+    for test in answer.next_tests:
+        console.print(f"  [cyan]run[/cyan]    {test}")
+    for record in answer.verify_records:
+        console.print(
+            f"  [yellow]verify[/yellow] {record}"
+            f"  [dim](record is stale or low confidence)[/dim]"
+        )
+    if answer.next_tests or answer.verify_records:
+        console.print(f"  [dim]plan cost {answer.plan_cost}[/dim]")
+    for pair in answer.indistinguishable:
+        console.print(f"  [red]cannot separate[/red] {pair[0]} from {pair[1]} with available tests")
+    # Not `reason` -- that name is the reasoning module, and shadowing it here would break
+    # any later call in this function.
+    for why in answer.open_reasons:
+        console.print(f"  [yellow]open[/yellow]   {why}")
+    if answer.solved:
+        console.print("")
+        console.print(f"[green]resolution:[/green] {', '.join(answer.recommended)}")
+        if answer.truck_roll:
+            console.print("[yellow]requires dispatch[/yellow]")
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(answer.to_json() + "\n", encoding="utf-8")
+        console.print(f"[dim]{out}[/dim]")
 
 
 def main() -> None:
