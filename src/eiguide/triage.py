@@ -62,14 +62,33 @@ def solve(
         ctl.add("base", [], evidence)
     ctl.ground([("base", [])])
 
-    best: dict = {"cost": [0], "atoms": []}
+    # A cost-optimal plan is rarely unique -- this ticket has four at cost 6 -- and taking
+    # whichever the solver reported last means a technician can be handed different work on
+    # two identical runs. Collect the optima and pick one by a fixed rule.
+    #
+    # Only the *plan* varies: measured across the optima, every other atom is identical, and
+    # structurally nothing derived from do_test/1 feeds back into candidate/1 or solved/0.
+    # So the verdict never depended on this, and enumerating cautiously to protect it would
+    # be machinery for nothing. The plan still has to be reproducible.
+    found: list[dict] = []
 
     def on_model(m: clingo.Model) -> None:
-        nonlocal best
-        best = {"cost": list(m.cost), "atoms": [(s.name, s.arguments) for s in m.symbols(shown=True)]}
+        found.append(
+            {"cost": list(m.cost), "atoms": [(s.name, s.arguments) for s in m.symbols(shown=True)]}
+        )
 
     ctl.solve(on_model=on_model)
-    return best
+    if not found:
+        return {"cost": [0], "atoms": []}
+
+    cheapest = min(m["cost"][0] if m["cost"] else 0 for m in found)
+    optimal = [m for m in found if (m["cost"][0] if m["cost"] else 0) == cheapest]
+
+    def key(model: dict) -> tuple:
+        tests = sorted(str(a[0]) for n, a in model["atoms"] if n == "do_test")
+        return (len(tests), tests)
+
+    return min(optimal, key=key)
 
 
 def outcomes(model: dict) -> dict[str, list[str]]:

@@ -74,11 +74,27 @@ class TestConvergence:
         assert "otdr_trace" not in first.next_tests
         assert first.plan_cost <= 6
 
-    def test_the_plan_escalates_only_as_cheap_options_run_out(self, ticket):
+    def test_expensive_tests_are_skipped_when_cheap_ones_discriminate(self, ticket):
+        """The property that actually matters, and the one a bug hid.
+
+        `separates/3` was once defined per-test rather than per-outcome, so
+        read_optical_power -- which responds to both fiber_cut and optic_degraded -- was
+        judged unable to tell them apart, even though `no_light` confirms one and rules out
+        the other. The planner reached past a cost-1 optical read for a cost-8 OTDR, and an
+        earlier version of this test mistook that escalation for correct behaviour.
+
+        With discrimination computed at outcome level the whole diagnosis completes on
+        one-cost remote reads, and neither the OTDR nor a truck is ever scheduled.
+        """
         _, path = triage.resolve(
             ticket, KB, oracle_from(DARK_FIBRE, {"uplink_span_known": True, "golden_config_known": True}), ROOT
         )
-        assert path[0].cost < max(r.cost for r in path), "cost never escalated"
+        scheduled = {t for r in path for t in r.tests}
+        assert "site_visit" not in scheduled
+        assert "otdr_trace" not in scheduled, (
+            "reached for an 8-cost trace while a 1-cost optical read discriminates"
+        )
+        assert max(r.cost for r in path) <= 6
 
 
 class TestUnreliableRecords:
@@ -192,3 +208,77 @@ class TestIngestion:
         # And it must still ground.
         result = solve_once(t)
         assert result.candidates == []
+
+
+class TestContradictoryEvidence:
+    """Readings that disagree must be named, never silently reconciled.
+
+    This is the failure the design document called the important one, and it was worse in
+    practice than on paper: the ticket reported SOLVED with a resolution it had no positive
+    evidence for.
+    """
+
+    CONFLICT = {
+        "read_optical_power": "no_light",   # confirms fiber_cut
+        "otdr_trace": "continuous",         # rules out fiber_cut
+        "query_power_telemetry": "ac_present",
+        "check_upstream_alarms": "none",
+        "read_error_counters": "clean",
+        "ping_node": "replies",
+    }
+
+    def _conflicted(self, ticket):
+        evidence = triage.evidence_facts(
+            self.CONFLICT, {"uplink_span_known": True, "golden_config_known": True}
+        )
+        return solve_once(ticket, evidence)
+
+    def test_conflicting_readings_block_a_verdict(self, ticket):
+        """Before the fix this returned solved=True, push_golden_config.
+
+        A dark fibre and an intact trace cannot both be right. `eliminated` quietly won,
+        fiber_cut vanished from the candidate set, and the only survivor was reported as
+        the answer despite nothing confirming it.
+        """
+        result = self._conflicted(ticket)
+        assert result.solved is False
+        assert result.recommended == []
+        assert not result.truck_roll
+
+    def test_the_conflict_is_named_not_guessed_at(self, ticket):
+        result = self._conflicted(ticket)
+        assert any("for and against" in r for r in result.open_reasons), result.open_reasons
+
+
+class TestKnowledgeBaseIntegrity:
+    """Guardrails on the knowledge base itself.
+
+    An author who knows routers is not required to also know ASP, so anything that can be
+    derived from the outcome table must be, and anything that cannot be checked by hand
+    must be checked by the solver.
+    """
+
+    def test_no_knowledge_file_authors_observes(self):
+        """`observes/2` is derived. Authoring it lets it drift from the outcomes.
+
+        Two pairs had already drifted -- claiming discriminating power that no result
+        delivered, so the planner scheduled tests that could not move either candidate.
+        """
+        for path in KB:
+            for line in path.read_text().splitlines():
+                stripped = line.strip()
+                if stripped.startswith("%"):
+                    continue
+                assert not stripped.startswith("observes("), f"{path.name}: {stripped}"
+
+    def test_every_test_has_a_recordable_outcome(self, ticket):
+        """A test that can be planned but whose result cannot be entered sends a
+        technician to do work that changes nothing."""
+        model = triage.solve(ticket, KB, "", ROOT)
+        holes = [str(a[0]) for n, a in model["atoms"] if n == "test_without_outcomes"]
+        assert holes == [], holes
+
+    def test_the_plan_is_reproducible(self, ticket):
+        """Four plans tie at the optimum. A technician must get the same one twice."""
+        plans = {tuple(solve_once(ticket).next_tests) for _ in range(5)}
+        assert len(plans) == 1, plans

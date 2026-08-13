@@ -61,22 +61,10 @@ test(read_error_counters).  test_cost(read_error_counters, 1).
 test(otdr_trace).           test_cost(otdr_trace, 8).
 test(site_visit).           test_cost(site_visit, 40).
 
-% observes(Test, Hypothesis): this test responds to that explanation. A test that responds
-% to two candidates cannot tell them apart, which is what the planner exploits.
-observes(read_optical_power,   fiber_cut).
-observes(read_optical_power,   optic_degraded).
-observes(otdr_trace,           fiber_cut).
-observes(check_upstream_alarms, upstream_outage).
-observes(query_power_telemetry, site_power_loss).
-observes(diff_running_config,  config_drift).
-observes(read_error_counters,  optic_degraded).
-observes(read_error_counters,  hardware_fault).
-observes(read_error_counters,  backhaul_congestion).
-observes(ping_node,            config_drift).
-observes(ping_node,            hardware_fault).
-observes(site_visit,           hardware_fault).
-observes(site_visit,           site_power_loss).
-observes(site_visit,           fiber_cut).
+% What each test responds to is DERIVED from the outcome table below, not stated here.
+% Authoring it separately lets the two drift: `observes(ping_node, config_drift)` claimed
+% discriminating power that no outcome delivered, so the planner kept scheduling a test
+% that could not move either candidate.
 
 % ---------------------------------------------------------------------------
 % How results move the diagnosis
