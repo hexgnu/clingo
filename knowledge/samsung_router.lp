@@ -106,6 +106,24 @@ confirms(read_error_counters,  congestion, backhaul_congestion).
 confirms(otdr_trace, break_at_distance, fiber_cut).
 rules_out(otdr_trace, continuous,       fiber_cut).
 
+% A node that answers is running enough software to answer, which is what rules a dead
+% board out. It says nothing about a drifted config -- a mis-routed node still pings.
+rules_out(ping_node, replies,  hardware_fault).
+
+% Silence is the expected result here and rules nothing out, but it still has to be
+% recordable. An outcome a technician observed and cannot enter leaves the planner asking
+% the same question forever.
+outcome(ping_node, no_reply).
+
+% The truck roll. Expensive, and the only test that settles several things at once, which
+% is why the planner reaches for it last rather than never.
+confirms(site_visit,  fibre_damaged,  fiber_cut).
+confirms(site_visit,  power_absent,   site_power_loss).
+confirms(site_visit,  board_failed,   hardware_fault).
+rules_out(site_visit, all_nominal,    hardware_fault).
+rules_out(site_visit, all_nominal,    site_power_loss).
+rules_out(site_visit, all_nominal,    fiber_cut).
+
 % ---------------------------------------------------------------------------
 % What to do about it
 % ---------------------------------------------------------------------------

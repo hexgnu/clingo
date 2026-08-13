@@ -72,6 +72,28 @@ def solve(
     return best
 
 
+def outcomes(model: dict) -> dict[str, list[str]]:
+    """Legal results per test, read out of the knowledge base.
+
+    Offering these rather than a free-text box keeps a technician from entering a value no
+    rule responds to, which would look like an answer and change nothing.
+    """
+    found: dict[str, list[str]] = {}
+    for name, args in model["atoms"]:
+        if name == "outcome":
+            found.setdefault(str(args[0]), []).append(str(args[1]))
+    return {k: sorted(v) for k, v in found.items()}
+
+
+def fact_status(model: dict) -> dict[str, str]:
+    """Trust state per fact, for showing what the record is worth before acting on it."""
+    status: dict[str, str] = {}
+    for name, args in model["atoms"]:
+        if name in ("established", "refuted", "unverified") and args:
+            status[str(args[0])] = name
+    return status
+
+
 def _collect(model: dict, name: str) -> list[str]:
     out = []
     for atom_name, args in model["atoms"]:

@@ -605,6 +605,161 @@ def triage(
         console.print(f"[dim]{out}[/dim]")
 
 
+def _known_panel(ticket: Ticket, model: dict) -> None:
+    """Show what the record claims and what it is worth, before anything is acted on.
+
+    A technician deciding whether to trust "span 17 feeds this router" needs the age and
+    confidence of that row, not just its contents.
+    """
+    status = triage_mod.fact_status(model)
+    table = Table(title="what we know", show_header=True)
+    table.add_column("record")
+    table.add_column("source")
+    table.add_column("conf", justify="right")
+    table.add_column("age", justify="right")
+    table.add_column("status")
+    for fact in ticket.facts:
+        state = status.get(fact.fact, "unknown")
+        age = ticket.received_day - fact.as_of_day
+        style = {"established": "green", "unverified": "yellow", "refuted": "red"}.get(state, "dim")
+        note = state
+        if state == "unverified":
+            note = "STALE" if age > ticket.stale_after_days else "LOW CONFIDENCE"
+        table.add_row(
+            fact.fact, fact.source, f"{fact.confidence}%", f"{age}d",
+            f"[{style}]{note}[/{style}]",
+        )
+    if ticket.facts:
+        console.print(table)
+
+
+def _candidates_panel(answer) -> None:
+    table = Table(show_header=True)
+    table.add_column("explanation")
+    table.add_column("status")
+    for h in answer.candidates:
+        table.add_row(
+            h,
+            "[yellow]provisional[/yellow]" if h in answer.provisional else "[cyan]live[/cyan]",
+        )
+    if answer.candidates:
+        console.print(table)
+
+
+@app.command()
+def work(
+    ticket_file: Annotated[Path, typer.Argument(help="Inbound ticket JSON.")],
+    knowledge: Annotated[list[Path] | None, typer.Option(help="Knowledge bases (.lp).")] = None,
+) -> None:
+    """Work a ticket interactively, re-solving after every answer.
+
+    The diagnostic counterpart of `inspect`. Each round shows the live explanations and
+    asks for the single cheapest thing that would tell them apart; answering narrows the
+    field and the next question changes accordingly. Single session, nothing written.
+    """
+    ticket = Ticket.load(ticket_file)
+    kb = list(knowledge) if knowledge else sorted(KNOWLEDGE.glob("*.lp"))
+
+    results: dict[str, str] = {}
+    checks: dict[str, bool] = {}
+    step = 0
+
+    console.print(
+        Panel(
+            f"[bold]{ticket.ticket_id}[/bold]  ·  {ticket.source}  ·  asset {ticket.asset_id}\n"
+            + "\n".join(
+                f"alarm  {a.code}" + (f"  ({a.severity})" if a.severity else "")
+                for a in ticket.alarms
+            ),
+            title="ticket",
+        )
+    )
+
+    while True:
+        model = triage_mod.solve(ticket, kb, triage_mod.evidence_facts(results, checks), ROOT)
+        answer = triage_mod.to_result(ticket, model)
+
+        if step == 0:
+            _known_panel(ticket, model)
+        console.print(
+            f"[cyan]{len(answer.candidates)} explanation(s) live[/cyan]"
+            + (f" · [yellow]{len(answer.provisional)} provisional[/yellow]" if answer.provisional else "")
+        )
+        _candidates_panel(answer)
+
+        if answer.unrecognized_codes:
+            codes = ", ".join(answer.unrecognized_codes)
+            console.print(f"[bold red]unrecognized alarm codes:[/bold red] {codes}")
+
+        if answer.solved:
+            console.print(f"\n[bold green]SOLVED[/bold green] → {', '.join(answer.recommended)}")
+            if answer.truck_roll:
+                console.print("[yellow]requires dispatch[/yellow]")
+            return
+
+        pending_tests = list(answer.next_tests)
+        pending_records = list(answer.verify_records)
+        if not pending_tests and not pending_records:
+            console.print("\n[yellow]Nothing further would change the answer.[/yellow]")
+            for why in answer.open_reasons:
+                console.print(f"  open: {why}")
+            for pair in answer.indistinguishable:
+                console.print(f"  [red]cannot separate[/red] {pair[0]} from {pair[1]}")
+            return
+
+        legal = triage_mod.outcomes(model)
+        progressed = False
+
+        for record in pending_records:
+            step += 1
+            console.print(
+                Panel(
+                    f"Confirm in the field: [bold]{record}[/bold]\n"
+                    f"[dim]The record is stale or low confidence, and a live explanation "
+                    f"depends on it.[/dim]",
+                    title=f"step {step} · verify record",
+                )
+            )
+            reply = typer.prompt("  [y]es / [n]o / [s]kip / [q]uit", default="s").strip().lower()
+            if reply.startswith("q"):
+                return
+            if reply.startswith("s"):
+                continue
+            checks[record] = reply.startswith("y")
+            progressed = True
+            break  # re-solve: a refuted record can remove the very tests just planned
+
+        if progressed:
+            continue
+
+        for test in pending_tests:
+            step += 1
+            choices = legal.get(test, [])
+            console.print(
+                Panel(
+                    f"Run: [bold]{test}[/bold]", title=f"step {step} · test · cost {answer.plan_cost}"
+                )
+            )
+            for i, choice in enumerate(choices, 1):
+                console.print(f"   {i}) {choice}")
+            reply = typer.prompt("  result (number) / [s]kip / [q]uit", default="s").strip().lower()
+            if reply.startswith("q"):
+                return
+            if reply.startswith("s"):
+                continue
+            if reply.isdigit() and 1 <= int(reply) <= len(choices):
+                results[test] = choices[int(reply) - 1]
+                progressed = True
+                break
+            console.print("[yellow]not a listed outcome; skipping[/yellow]")
+
+        if not progressed:
+            console.print("\n[yellow]Nothing was answered; stopping.[/yellow]")
+            for why in answer.open_reasons:
+                console.print(f"  open: {why}")
+            return
+
+
 def main() -> None:
     app()
 

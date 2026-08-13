@@ -122,6 +122,21 @@ useful_test(T) :- do_test(T), separates(T, _, _).
 #minimize { 1, F : verify(F) }.
 
 % ---------------------------------------------------------------------------
+% What a test can come back with
+% ---------------------------------------------------------------------------
+% Derived from the knowledge base rather than listed separately, so a technician is offered
+% the outcomes that actually mean something and cannot enter a value no rule responds to.
+
+outcome(T, V) :- rules_out(T, V, _).
+outcome(T, V) :- confirms(T, V, _).
+
+% A test the planner can schedule but whose result nobody can record is a hole in the
+% knowledge base, not a valid plan. It sends a technician to do work that cannot change
+% the answer -- so it is reported, and never scheduled.
+test_without_outcomes(T) :- test(T), not outcome(T, _).
+:- do_test(T), test_without_outcomes(T).
+
+% ---------------------------------------------------------------------------
 % Resolution
 % ---------------------------------------------------------------------------
 
@@ -142,3 +157,6 @@ truck_roll :- recommended(R), dispatch_required(R).
 #show recommended/1.
 #show truck_roll/0.
 #show blind_spot/0.
+#show outcome/2.
+#show test_without_outcomes/1.
+#show needs_verification/1.
