@@ -1,0 +1,21 @@
+{
+  "ticket_id": "SAMS-5120",
+  "source": "samsung_nms",
+  "kind": "alarm",
+  "received_day": 300,
+  "asset_id": "rtr_phx_118",
+  "alarms": [
+    {"code": "LOS-A2", "raised_day": 300, "severity": "critical"},
+    {"code": "NODE-UNREACH", "raised_day": 300, "severity": "major"}
+  ],
+  "facts": [
+    {"source": "onevizion",     "fact": "uplink_span_known",   "confidence": 90, "as_of_day": 295},
+    {"source": "migration_app", "fact": "uplink_span_known",   "confidence": 88, "as_of_day": 298, "negated": true},
+
+    {"source": "onevizion",     "fact": "site_location_known", "confidence": 92, "as_of_day": 290},
+    {"source": "hyperlink",     "fact": "site_location_known", "confidence": 70, "as_of_day": 296, "negated": true},
+
+    {"source": "onevizion",     "fact": "upstream_node_known", "confidence": 95, "as_of_day": 297},
+    {"source": "onevizion",     "fact": "golden_config_known", "confidence": 93, "as_of_day": 294}
+  ]
+}
