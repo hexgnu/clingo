@@ -1,24 +1,40 @@
-% Ticket resolution: unsolved world -> solved world.
+% An alarm creates an incident world.
 %
-% The compliance side asks "which obligations are undischarged?" and plans a minimum cover.
-% A ticket asks a different question -- "which of the competing explanations is true?" --
-% and the right plan is the cheapest set of tests that tells them apart. Same solver, same
-% three-valued honesty, different objective.
+% The initial alarm gives you a few facts. Cause, impact and remediation are unresolved.
+% Every subsequent telemetry point, technician observation or action collapses the
+% possibilities until the incident is solved.
 %
-% A ticket is SOLVED when exactly one candidate explanation survives, every record it rests
-% on is established, no alarm went uninterpreted, and no evidence contradicts itself.
-% Anything less is reported as open with the specific reason, never as a best guess.
+% That sentence is the encoding. A **world** is one way things could be: a set of faults
+% that accounts for what was reported, with nothing spare. The answer sets ARE the
+% possibilities, so nothing here maintains a candidate list -- evidence arrives as
+% constraints, and worlds stop existing.
 %
-% Laid out GENERATE / DEFINE / TEST / OPTIMIZE / DISPLAY. Rule order has no bearing on the
-% answer sets; the sections are for the reader, so that what is *chosen* can be told apart
-% from what is *derived* and what is *forbidden*.
+% What that replaced, and why:
+%
+%   candidate/1 + eliminated/1     a possibility set maintained by hand, in a single answer
+%                                  set. Only elimination could narrow it, so a reading that
+%                                  positively confirmed something changed nothing.
+%   solved :- open_candidates(1)   forbade two simultaneous faults by construction. A power
+%                                  event that takes out a node and its heartbeat is two
+%                                  faults, and a plant produces them routinely.
+%
+% Two passes, because possibility and planning are different questions and no single world
+% can answer the second:
+%
+%   pass 1   no candidate/1 supplied   enumerate the minimal worlds
+%   pass 2   candidate/1 supplied      plan the cheapest thing that tells them apart
+%
+% The union of pass 1's worlds is what is POSSIBLE; the intersection is what is CERTAIN.
+% Both are handed back on pass 2 as facts, because agreement is a property of the model set
+% and no member of that set can see it.
+%
+% Rule order has no bearing on the answer sets; the sections are for the reader.
 
 #program base.
 
 % ===========================================================================
 % INPUT SIGNATURE
 % ===========================================================================
-% Supplied by a ticket instance, a knowledge base, or the trust layer.
 
 #defined ticket/1.
 #defined symptom/2.
@@ -37,86 +53,123 @@
 #defined requires_fact/2.
 #defined resolution/2.
 #defined dispatch_required/1.
+#defined authorised_spend/2.
+#defined service_affecting/1.
+#defined restored/1.
+
+% Supplied on pass 2 only, computed from pass 1's worlds.
+#defined candidate/1.        % in at least one minimal world  -- possible
+#defined certain/1.          % in every minimal world         -- established
+#defined possible_action/1.
+#defined certain_action/1.
 
 % ===========================================================================
 % GENERATE
 % ===========================================================================
-% The only choices in the program: which tests to run, and which suspect records to go and
-% confirm. Everything below is derived from these plus the evidence.
 
-{ do_test(T) } :- test(T), not test_result(T, _).
+% A world is any set of faults. The TEST section decides which sets survive.
+{ fault(H) : hypothesis(H) }.
 
-{ verify(F) } :- needs_verification(F).
+% Pass 2 only. Guarded on candidate/1 because a plan has to discriminate ALL the surviving
+% worlds, which is not a property any one of them can see.
+{ do_test(T) } :- test(T), not test_result(T, _), candidate(_).
+{ verify(F) }  :- needs_verification(F), candidate(_).
 
 % ===========================================================================
 % DEFINE
 % ===========================================================================
 
-% --- symptoms, translated from whatever the originating system called them ---
+% --- probable cause, in X.733's sense ---
+% What the alarm indicates, translated out of whatever the originating system called it.
+% X.733 calls this the probable cause and it is NOT the root cause: `loss_of_signal` is what
+% the device reported, `fiber_cut` is what the reasoner has to work out.
 
-symptom(T, S) :- ticket(T), raw_alarm(Src, Code), maps_to(Src, Code, S).
+probable_cause(T, PC) :- ticket(T), raw_alarm(Src, Code), maps_to(Src, Code, PC).
+
+% Retained so knowledge bases can be written either way; probable_cause is the standard term.
+symptom(T, PC) :- probable_cause(T, PC).
 
 % An alarm the knowledge base cannot interpret is not a neutral event: the ticket is
 % carrying evidence the reasoner is blind to, so no answer derived without it is complete.
 blind_spot :- unmapped_code(_, _).
 
-% --- candidate explanations ---
-
-candidate(H) :- hypothesis(H), symptom(T, S), explains(H, S), ticket(T), not eliminated(H).
-
-eliminated(H) :- test_result(Test, Value), rules_out(Test, Value, H).
-confirmed(H) :- test_result(Test, Value), confirms(Test, Value, H).
-
-% Evidence pointing both ways about the same explanation. Once readings arrive from
-% instruments rather than fixtures this is the normal case, not the exotic one: an OTDR shot
-% down the wrong fibre, a port mis-scoped, a reading taken against a stale topology.
-%
-% Left alone the contradiction resolves itself the worst possible way -- `eliminated` wins,
-% the explanation vanishes from the candidate set without comment, and whatever remains is
-% reported as the answer with no positive evidence behind it.
-contested(H) :- confirmed(H), eliminated(H).
-any_contested :- contested(_).
-
-% Which readings disagree, so the next action can be "re-run that test" rather than another
-% test that cannot help.
-disputed_by(H, T1, T2) :- contested(H),
-                          test_result(T1, V1), confirms(T1, V1, H),
-                          test_result(T2, V2), rules_out(T2, V2, H).
-
-% --- what a diagnosis leans on ---
-% If blaming a fiber span depends on a record saying this router is fed by that span, then
-% that record is load-bearing and its reliability is part of the diagnosis.
-
-load_bearing(F) :- candidate(H), requires_fact(H, F).
-
-eliminated(H) :- requires_fact(H, F), refuted(F).
-
-% A hypothesis resting on an unverified record can still be true, but cannot be concluded.
-% This is what keeps a stale row from being laundered into a confident answer.
-provisional(H) :- candidate(H), requires_fact(H, F), unverified(F).
-
-% --- what a test responds to, and what it can return ---
-% Both DERIVED from the outcome table, never authored. Stating them separately lets the two
-% drift: `observes(ping_node, config_drift)` once claimed discriminating power no outcome
-% delivered, so the planner kept scheduling a test that could not move either candidate.
-
-observes(T, H) :- rules_out(T, _, H).
-observes(T, H) :- confirms(T, _, H).
+% --- what a test can come back with ---
+% Derived from the outcome table, never authored, so the two cannot drift apart.
 
 outcome(T, V) :- rules_out(T, V, _).
 outcome(T, V) :- confirms(T, V, _).
 
 test_without_outcomes(T) :- test(T), not outcome(T, _).
 
-% --- discrimination ---
-% Not coverage. Two candidates have to be told APART.
+% --- reading one world ---
+% What this world would have you do. Not yet advice: it is one world's opinion, and the
+% incident is only actionable when they agree. See ADVICE below.
+
+resolves_to(R) :- fault(H), resolution(H, R).
+
+% --- what a diagnosis leans on ---
+% If blaming a fiber span depends on a record saying this router is fed by that span, then
+% that record is load-bearing and its reliability is part of the diagnosis.
+
+load_bearing(F) :- fault(H), requires_fact(H, F).
+load_bearing(F) :- candidate(H), requires_fact(H, F).
+
+% Resting on an unverified record does not make an explanation false -- it makes it
+% unconcludable. This is what keeps a stale row from being laundered into a confident answer.
+provisional(H) :- fault(H), requires_fact(H, F), unverified(F).
+provisional(H) :- candidate(H), requires_fact(H, F), unverified(F).
+any_provisional :- provisional(_).
+
+% --- evidence that points both ways ---
+% Once readings arrive from instruments rather than fixtures this is the normal case, not
+% the exotic one: an OTDR shot down the wrong fiber, a port mis-scoped, a reading taken
+% against stale topology.
 %
-% Discrimination happens at the level of an OUTCOME, not a test. Asking "does this test
-% respond to H1 but not H2" gets the ideal case exactly backwards: read_optical_power
-% responds to both fiber_cut and optic_degraded, so a test-level rule calls it useless for
-% that pair -- when in fact `no_light` confirms one and rules out the other, and it is the
-% cheapest thing that settles them. Under the test-level rule the planner reached past a
-% cost-1 optical read for a cost-8 OTDR.
+% Under elimination it resolved itself the worst possible way -- the explanation vanished
+% from the candidate set without comment, and whatever remained was reported as the answer
+% with nothing confirming it. Here it is named, and it blocks a verdict.
+
+contested(H) :- confirms(T1, V1, H), test_result(T1, V1),
+                rules_out(T2, V2, H), test_result(T2, V2).
+any_contested :- contested(_).
+
+% Which readings disagree, so the next action can be "re-run that one" rather than another
+% test that cannot help.
+disputed_by(H, T1, T2) :- contested(H),
+                          test_result(T1, V1), confirms(T1, V1, H),
+                          test_result(T2, V2), rules_out(T2, V2, H).
+
+% ===========================================================================
+% TEST -- each constraint is a way the world could NOT be
+% ===========================================================================
+
+% --- a world should account for what was reported ---
+% Soft, not hard. A hard constraint here makes "nothing explains these alarms" come back as
+% UNSAT, which throws away every other finding in the same breath -- including the contested
+% readings that are usually the reason nothing explains them. An unexplained symptom is a
+% result, so it is minimized rather than forbidden.
+
+explained(S)   :- fault(H), explains(H, S).
+unexplained(S) :- symptom(_, S), not explained(S).
+
+% ...and carry nothing spare. Without this, every superset of a working explanation is also
+% a world and the count is 2^n. Measured: at 15 faults able to explain the alarm, 32512
+% worlds without this line, 8 with it.
+needed(H) :- fault(H), explains(H, S), symptom(_, S).
+:- fault(H), not needed(H).
+
+% --- evidence removes worlds ---
+% The whole mechanism. A reading does not update a score or cross a hypothesis off a list.
+% It makes certain worlds impossible.
+
+:- fault(H), test_result(T, V), rules_out(T, V, H).
+:- fault(H), requires_fact(H, F), refuted(F).
+
+% --- pass 2: the plan has to tell the surviving worlds apart ---
+% Discrimination is per OUTCOME, not per test. "Does this test respond to H1 but not H2"
+% gets the ideal case backwards: read_optical_power responds to both fiber_cut and
+% optic_degraded, so a test-level rule calls it useless for that pair -- when `no_light`
+% confirms one and rules out the other, and it is the cheapest thing that settles them.
 
 effect(T, V, H, ruled_out) :- rules_out(T, V, H).
 effect(T, V, H, confirmed) :- confirms(T, V, H).
@@ -136,40 +189,16 @@ indistinguishable(H1, H2) :- candidate(H1), candidate(H2), H1 < H2,
 
 useful_test(T) :- do_test(T), separates(T, _, _).
 
-% --- is it solved ---
-
-open_candidates(N) :- N = #count { H : candidate(H) }.
-
-solved :- open_candidates(1), candidate(H),
-          not provisional(H), not blind_spot, not any_contested.
-
-% Every distinct reason a ticket is still open is reported, so "not solved" is never a bare
-% negative.
-unsolved_reason("no explanation covers the reported symptoms") :- open_candidates(0).
-unsolved_reason("several explanations remain") :- open_candidates(N), N > 1.
-unsolved_reason("the only explanation rests on an unverified record") :-
-    open_candidates(1), candidate(H), provisional(H).
-unsolved_reason("the ticket carries alarm codes this knowledge base does not recognize") :-
-    blind_spot.
-unsolved_reason("evidence for and against the same explanation") :- contested(_).
-
-% --- resolution ---
-
-recommended(R) :- solved, candidate(H), confirmed(H), resolution(H, R).
-recommended(R) :- solved, candidate(H), resolution(H, R), not confirmed(H).
-
-truck_roll :- recommended(R), dispatch_required(R).
-
-% ===========================================================================
-% TEST
-% ===========================================================================
-
-% Every separable pair must actually be separated by the chosen plan.
 :- candidate(H1), candidate(H2), H1 < H2, distinguishable(H1, H2),
    not do_test(T) : separates(T, H1, H2).
 
 % No test that separates nothing outstanding.
 :- do_test(T), not useful_test(T).
+
+% X.733 severity as a spend ceiling. A warning-severity ticket may not authorise a truck
+% roll; a critical one may authorise it immediately rather than exhausting cheap telemetry
+% first. Severity governs entitlement to spend, never what is true.
+:- do_test(T), test_cost(T, C), ticket(Tk), authorised_spend(Tk, Max), C > Max.
 
 % A test the planner can schedule but whose result nobody can record is a hole in the
 % knowledge base, not a valid plan. It sends a technician to do work that cannot change the
@@ -177,32 +206,84 @@ truck_roll :- recommended(R), dispatch_required(R).
 :- do_test(T), test_without_outcomes(T).
 
 % Load-bearing records still unverified must be confirmed before the answer is relied on.
-:- needs_verification(F), not verify(F).
+:- needs_verification(F), not verify(F), candidate(_).
+
+% ===========================================================================
+% MILESTONES
+% ===========================================================================
+% Two of them, deliberately separate. You can identify a fiber cut in four minutes and be
+% eight hours from restoring service; collapsing the two lets the system claim victory at
+% the halfway point.
+
+% Root-cause analysis complete. Not "one explanation survives" -- that forbade simultaneous
+% faults. Every surviving world agrees on the cause, whether that cause is one fault or two.
+action_disputed :- possible_action(R), not certain_action(R).
+
+cause_known :- certain(_), not action_disputed,
+               not any_provisional, not any_contested, not blind_spot.
+
+% Ready for service -- the milestone the customer cares about.
+service_restored :- cause_known, certain_action(R), restored(R).
+service_restored :- cause_known, certain(H), not service_affecting(H).
+
+solved :- cause_known.
+
+% ---------------------------------------------------------------------------
+% ADVICE
+% ---------------------------------------------------------------------------
+% Only once the cause is known. A recommendation emitted while explanations still disagree
+% is the confident wrong answer that rolls a truck to the wrong span -- and an unmapped
+% alarm code or a contested reading has to be able to withhold it.
+
+advised(R) :- cause_known, certain_action(R).
+truck_roll :- advised(R), dispatch_required(R).
+
+% Every distinct reason a ticket is still open is reported, so "not solved" is never a bare
+% negative.
+unsolved_reason("no explanation covers the reported symptoms") :- unexplained(_).
+unsolved_reason("the remaining explanations call for different actions") :- action_disputed.
+unsolved_reason("an explanation rests on an unverified record") :- provisional(_).
+unsolved_reason("the ticket carries alarm codes this knowledge base does not recognize") :-
+    blind_spot.
+unsolved_reason("evidence for and against the same explanation") :- contested(_).
 
 % ===========================================================================
 % OPTIMIZE
 % ===========================================================================
 
-#minimize { C, T : do_test(T), test_cost(T, C) }.
-#minimize { 1, F : verify(F) }.
+% Occam, and it is load-bearing rather than stylistic. The smallest set of faults that
+% accounts for the symptoms wins, so a second fault appears only when no single one explains
+% what was seen. This is what keeps the world count linear in the number of faults that
+% could explain the alarm instead of exponential in it.
+% Explaining the alarms comes first, above parsimony: a world that accounts for two symptoms
+% with two faults beats one that accounts for one symptom with one.
+#minimize { 1@4, S : unexplained(S) }.
+
+#minimize { 1@3, H : fault(H) }.
+
+#minimize { C@2, T : do_test(T), test_cost(T, C) }.
+#minimize { 1@1, F : verify(F) }.
 
 % ===========================================================================
 % DISPLAY
 % ===========================================================================
 
-#show candidate/1.
+#show fault/1.
+#show resolves_to/1.
+#show unexplained/1.
 #show provisional/1.
-#show eliminated/1.
-#show confirmed/1.
 #show contested/1.
 #show disputed_by/3.
+#show advised/1.
+#show truck_roll/0.
 #show do_test/1.
 #show verify/1.
 #show indistinguishable/2.
 #show solved/0.
+#show cause_known/0.
+#show service_restored/0.
+#show probable_cause/2.
 #show unsolved_reason/1.
-#show recommended/1.
-#show truck_roll/0.
 #show blind_spot/0.
 #show outcome/2.
 #show test_without_outcomes/1.

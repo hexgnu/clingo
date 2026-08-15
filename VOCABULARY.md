@@ -1,220 +1,197 @@
 # Vocabulary
 
-Companion to [DESIGN-solver.md](DESIGN-solver.md). Working document.
+Companion to [DESIGN.md](DESIGN.md) (how the ontology is built) and
+[INCIDENT.md](INCIDENT.md) (what an incident is). Working document.
 
-Most of these terms already exist in the code under inconsistent names, or exist as
-behavior with no name at all. This is mostly a **renaming and a reconciliation**, not an
-invention — which is the argument for doing it: where two names mean one thing, they drift,
-and §2.2 of the design doc is a measured instance of exactly that.
+## The admission test
 
-Two independent axes. Keeping them independent is the whole point; the current code
-conflates them into a single `confidence: int`.
+**A vocabulary term earns its place if some rule branches on it.** If no rule distinguishes two values, they are one value with two names — which is how `observes/2` drifted into chaos.
 
 ---
 
-## Axis 1 — Modality: what did the evidence touch?
+## Why a vocabulary matters
 
-### `direct physical`
-A person or instrument in contact with the plant, **addressed by being there**. A
-photograph of a fuse panel, a tape measure on a cable span, a technician's eyeball.
+Evidence is stored as one thing: a value, plus an integer called `confidence`. So a vision model at 0.85, a records database at 85, and a technician who is "pretty sure" all arrive as the same number, and `min_confidence(80)` compares them as if they were commensurable. They are not.
 
-Cannot be misaddressed. If you are standing at the rack, you are observing *that rack*,
-whatever the record thinks it is called. This is the only evidence class immune to
-topology error, which is why `trust.lp:51` is right to let `field_check` override any
+They fail in **different ways**, and a reasoner that cannot tell the failures apart cannot respond to them.
+
+A vocabulary means a small set of **independent questions** about evidence. Independent is key: knowing the answer to one should tell you nothing about the others.
+
+---
+
+## Four dimensions and two relations
+
+Four dimensions. Most already exist in the code, unnamed or named inconsistently. Two relations are edges, not categories.
+
+## 1. Modality — what did it touch?
+
+| | |
+|---|---|
+| `logical` | read a representation: a config diff, a record query, a document |
+| `physical` | touched the plant: a photograph, a meter, a site visit |
+
+They fail differently. Logical evidence can be confidently wrong about the world, because
+the representation and the world drift apart. Physical evidence cannot be wrong about
+*what it touched* — if you are standing at the rack, you are looking at that rack whatever
+the record calls it. This is why `trust.lp:51` is right to let `field_check` override any
 `claim` unconditionally.
 
-Expensive to refresh. That is its defining operational property, not its cost per se.
+The operational difference is **refresh cost**. Logical evidence is cheap to re-run;
+physical evidence is not. That matters more than it sounds: staleness only matters in
+proportion to refresh cost. A logical fact that is cheap to re-check does not need a decay
+model, it needs re-checking.
 
-### `mediated physical`
-An instrument in contact with the physical world, but **addressed through a record**. An
-SNMP read of "the uplink port," an optical power poll, a telemetry query.
+The ticket knowledge base already encodes modality — badly, as cost:
 
-The reading is of something real. *Which* real thing it is of depends on a logical fact
-being correct. **Mediated evidence is only as trustworthy as the fact that addressed it** —
-and this is the failure mode that produces confident wrong answers, because the reading
-itself looks impeccable.
-
-> ▸ Not currently modeled. `requires_fact/2` exists in `samsung_router.lp:44` and applies
-> only to *hypotheses*. No test declares what record row addressed it. This is the
-> single largest gap the vocabulary exposes — see §4.1.
-
-### `logical`
-Reads a representation only. A config diff, a record query, a fuse book review, a
-cross-reference against a standard.
-
-Never touches the plant, so it can be wrong about the world in a way physical evidence
-cannot. But **cheap to refresh** — which is what actually matters operationally, because
-staleness only matters in proportion to refresh cost. A logical fact that is cheap to
-re-check does not need a decay model; it needs re-checking.
-
-### Why the split earns its place
-
-The ticket knowledge base already encodes this — badly, as an integer:
-
-| test | cost | actual modality |
+| test | cost | modality |
 |---|---:|---|
-| `diff_running_config` | 2 | logical |
-| `ping_node` | 1 | logical |
-| `read_optical_power` | 1 | **mediated physical** |
-| `otdr_trace` | 8 | mediated physical |
-| `site_visit` | 40 | direct physical |
+| `ping_node`, `diff_running_config` | 1–2 | logical |
+| `read_optical_power`, `otdr_trace` | 1–8 | physical |
+| `site_visit` | 40 | physical |
 
-The cost scale is a **proxy for modality**, and a lossy one. Naming modality directly makes
-the most defensible rule in the whole cost model expressible without inventing numbers:
-
-> **Exhaust logical evidence before mediated, and mediated before direct.**
-
-That is a preference ordering (§4 of the design doc), not a cost ratio. It needs no claim
-that a truck roll is worth exactly 40 pings.
+Naming it directly makes the most defensible rule in the whole cost model expressible
+without inventing numbers: **exhaust logical evidence before physical.** That is an
+ordering, not a ratio — it needs no claim that a truck roll is worth 40 pings.
 
 ---
 
-## Axis 2 — Provenance: who asserted it, and what has happened since?
+## 2. Provenance — who asserted it?
 
-Your phrase was *"AI captured, human reviewed, data stored."* Those are three different
-things and they do not form a ladder. Pulling them apart:
+| | fails by |
+|---|---|
+| `instrument` | miscalibration, wrong port, dead sensor |
+| `model` | hallucination, out-of-distribution input |
+| `human` | fatigue, haste, inexperience |
+| `record` | lag — the world moved and nobody updated the row |
 
-### `artifact` — the thing that can be re-examined
-The photograph. The OTDR trace file. The raw API response. The recording.
+Four distinct failure modes with four distinct remedies. That is the whole justification for
+the dimension: recalibrate, re-review, re-ask, or re-survey.
 
-**Distinct from the assertion made about it.** This is the distinction that makes AI capture
-tractable, and the repo currently has no place to put it (`evidence_uri` was removed as
-decoration, per README — correctly at the time, since nothing consumed it).
+Note what is **not** here: a review level. "Human reviewed" is not a rank an assertion
+climbs — it is a second assertion, by a `human`, *about* the first one. That falls out of
+the `about` relation below and needs no vocabulary of its own.
 
-### `assertion` — the claim
-`cell_number_legible = true`. `read_optical_power = no_light`. What the reasoner consumes.
+---
 
-### `agent` — what produced the assertion
+## 3. Standing — is it still good?
 
 | | |
 |---|---|
-| `instrument` | a meter, an OTDR, an SNMP counter |
-| `model` | a vision model reading an artifact, an LLM reading a clause |
-| `human` | a technician, a reviewer |
-| `record` | a system of record asserting on its own authority |
+| `established` | good enough to reason from |
+| `unverified` | asserted, but something is wrong with it — stale, contested, low confidence |
+| `refuted` | someone checked and it is not so |
 
-### `review` — what has happened to the assertion since
+Already implemented in `trust.lp` for record facts, and it is the best-designed thing in the
+ticket half. It applies unchanged to evidence, which is the point: **one trust mechanism,
+not two.** Only `established` evidence should fire `confirms`/`rules_out`.
+
+This is also where retraction lives. An assertion whose standing becomes `refuted` stops
+supporting whatever rested on it — non-monotonically, which is what ASP is for.
+
+---
+
+## 4. Effect — what does it do to a hypothesis?
+
+A hypothesis here means a **possible fault** (a member of the answer set).
 
 | | |
 |---|---|
-| `raw` | asserted, nothing checked it |
-| `machine_checked` | passed an acceptance criterion (`Observable.accepts`) |
-| `human_reviewed` | a person looked at the artifact and agreed |
-| `adjudicated` | a conflict was raised and someone with authority settled it |
+| `confirms` | positively supports the hypothesis |
+| `excludes` | rules out the hypothesis |
 
-### `custody` — can it be re-examined?
+Both already exist as `confirms/3` and `rules_out/3`. Named here because the system
+currently acts on only one of them. A reasoner that can only eliminate throws
+away most of what instruments produce — they overwhelmingly return positive findings
+(`no_light`, `crc_errors`, `ac_absent`). Positive evidence is inert until you model it.
 
-| | |
-|---|---|
-| `ephemeral` | exists only during the session; nothing was written |
-| `stored` | the artifact is retrievable |
-| `attested` | stored with an integrity guarantee |
+---
 
-> ▸ The inspection walk is deliberately `ephemeral` — README argues for this well, and the
-> argument is sound *for a half-finished walk*. But `ephemeral` and AI capture are
-> incompatible, for the reason in §3 below. This tension needs resolving before stage 4.
+## Two relations that are not dimensions
 
-### The key move: **AI capture is a derivation, not a tier**
+### `about` — what is this assertion about?
 
-A vision model reading a fuse panel photograph is **two links**, not one:
+An assertion can be about **a thing in the world**, or about **an artifact**, or about
+**another assertion**.
+
+That third case is what makes AI capture tractable, because AI capture is a chain, not a
+tier:
 
 ```
-camera  ──physical capture──▶  artifact  ──model inference──▶  assertion
-        agent: instrument                  agent: model
-        modality: direct physical          modality: logical (over an artifact)
+camera ──▶ artifact ──▶ assertion ──▶ assertion
+           (photo)      by a model     by a human, about the model's
 ```
 
-Treating "AI captured" as a single provenance level loses this, and the loss is expensive:
-it makes the two failure modes indistinguishable. A blurry photo and a hallucinating model
-are different problems with different remedies, and only one of them requires going back
-to the site.
+A blurry photo and a hallucinating model are different problems, and only one of them
+requires going back to the site. Collapsing them into a single "AI captured" label makes
+them indistinguishable — and loses the payoff, which is that **if the artifact is kept, a
+human can overturn the model's reading without a truck.**
 
-**The payoff:** if the artifact is stored, a human can re-review the *same* photograph and
-overturn the model's reading without a truck. That is the operational case for `custody:
-stored`, and it is strong enough to reopen the `evidence_uri` decision — this time earning
-its place rather than decorating.
+That is the operational case for storing artifacts, and it is what makes task #9
+(ephemeral vs. stored) a real decision rather than a preference.
 
----
+### `addressed_by` — how did the evidence find its subject?
 
-## Axis 3 — Effect: what does the evidence do to a hypothesis?
-
-Named here because §0 of the design doc is a measured case of one of these being missing.
-
-| | |
-|---|---|
-| `excluding` | rules the hypothesis out — `rules_out/3` |
-| `confirming` | positively supports it — `confirms/3` ▸ **currently inert** |
-| `inert` | responds to the hypothesis but no outcome moves it |
-
-▸ `inert` is not a design category, it is a bug detector. `observes(ping_node, config_drift)`
-is inert and nothing catches it. See design doc §2.2.
-
----
-
-## Reconciliation with existing code
-
-| current name | where | means | rename / status |
-|---|---|---|---|
-| `claim/4` | `trust.lp:23` | a record asserts | logical assertion, agent `record` |
-| `field_check/2` | `trust.lp:24` | someone confirmed on site | direct physical assertion, agent `human` |
-| `obs/3` | `core.lp:15` | compliance observation | physical assertion; modality unstated |
-| `test_result/2` | `diagnose.lp:28` | ticket evidence | assertion; **modality unstated — defect** |
-| `confidence: int` | `ticket.py:62` | 0–100, any source | ▸ **collapses both axes — see §4.2** |
-| `Verifiability` | `models.py:24` | observable/measurable/documentary/process_only | ✅ already the modality axis |
-| `ObsKind.document` | `models.py:33` | a capture kind | ▸ **unreachable — see §4.3** |
-| `process_only` | `models.py:30` | obligation on workflow | not evidence at all; correctly excluded |
-| `Rule.reviewed` | `models.py:134` | human signed off | `review: human_reviewed`, rules only |
-| `Observable.accepts` | `models.py:104` | acceptance criterion | the `machine_checked` predicate |
-
----
-
-## Defects the vocabulary exposes
-
-### 4.1 Mediated evidence does not declare what addressed it
-`requires_fact/2` guards hypotheses but not tests. So `read_optical_power` returning
-`no_light` is trusted identically whether `uplink_span_known` is fresh or 130 days stale —
-even though a stale span record means the poll may have read **the wrong port**.
-
-The rule the vocabulary implies:
+Physical evidence reached *through a record* inherits that record's standing. An optical
+power poll of "the uplink port" is a real reading of something real — but which thing
+depends on `uplink_span_known` being right.
 
 ```prolog
-% A mediated reading inherits the trust state of the fact that addressed it.
 addressed_by(read_optical_power, uplink_span_known).
-provisional_evidence(E) :- evidence(E,T,_,_,_,_), addressed_by(T,F), unverified(F).
 ```
 
-This connects `trust.lp` to the evidence layer for the first time, and it is very likely the
-real explanation for the SAMS-5120 conflict case: two sources disagree about
-`uplink_span_known`, which should make every mediated reading on that span provisional —
-and currently makes none of them so.
+This is not a third modality. It is an edge, and it produces the most dangerous failure in
+the system, because the reading itself looks impeccable.
 
-### 4.2 `confidence: int` collapses both axes
-`min_confidence(80)` at `trust.lp:34` compares OneVizion's 85, a vision model's 0.85, and a
-technician's "pretty sure" on one scale. They are not commensurable. Replace the scalar with
-`(agent, review, modality)` and let `trust.lp` decide — which is what it was written to do.
+▸ Not currently modeled anywhere. `requires_fact/2` (`samsung_router.lp:44`) guards
+*hypotheses* only; no test declares what addressed it. A hypothesis knows what it assumes;
+a measurement does not.
 
-### 4.3 The logical capture channel is welded shut
-▸ `ObsKind` includes `document` and `reason.py:135` has a working instruction for it
-(*"Obtain the record covering …"*), but `field_verifiable` at `models.py:141` excludes
-`documentary`, so `compile.py:77` emits no observables for those rules. Zero rules in
-`data/golden/` use it.
+▸ This is the real story of the SAMS-5120 conflict case, now measured: `onevizion` and
+`migration_app` disagree about `uplink_span_known`, neither claim is stale or low
+confidence, so `contradicted/1` is the only rule that fires — and the system reports it as
+`"LOW CONFIDENCE"` (`cli.py:627`), which is false. Every reading on that span should be
+provisional; none of them are. See [INCIDENT.md §3](INCIDENT.md), which argues the stronger
+form: a contradicted addressing fact does not weaken one row, it **forks the world**.
 
-Consequence: the fuse record book (D.6.4, D.6.5) is reported as *"cannot be settled by
-capture"* when it plainly can — by a logical capture that the pipeline already knows how to
-instruct. README frames this as a principled limit ("non-field-verifiable obligations"), but
-it is an artifact of conflating *not physically observable* with *not capturable*.
+---
 
-The fix is one term: `field_verifiable` → `capturable`, admitting `documentary`.
-`process_only` stays excluded, because it genuinely is.
+## Reconciliation — what needs to change
+
+| predicate | location | carries | missing | action |
+|---|---|---|---|---|
+| `claim/4` | `trust.lp:23` | modality, provenance | standing | already works, reuse as template |
+| `field_check/2` | `trust.lp:24` | modality, provenance | standing | same as claim/4 |
+| `obs/3` | `core.lp:15` | modality | provenance, standing | add provenance (physical from where?), add standing flag |
+| `test_result/2` | `diagnose.lp:28` | nothing | all four + `addressed_by` link | add all four dimensions, link to the facts it aimed at |
+| `confidence: int` | `ticket.py:62` | — | split into provenance + standing | replace with two separate fields |
+
+**The critical missing edge:** `addressed_by/2` — which facts does each test assume? See [§2](INCIDENT.md#2-the-world-is-an-extent-not-a-candidate-set) and [INCIDENT.md §3](INCIDENT.md#3-a-contradicted-addressing-fact-forks-the-world).
+
+---
+
+## Note on modality in the codebase
+
+`Verifiability` in `models.py:24` is actually modality — raw / photo / video / document. But the code treats `documentary` as "cannot be stored and re-examined," which is wrong. A document can be stored as an artifact just like a photo. The modality-to-storage link got tangled. They should separate: modality says *how* you found it (logical or physical); storage policy says whether you keep it (ephemeral or persistent). Those are independent.
+
+---
+
+## What this cuts
+
+Earlier draft had three axes and about fifteen terms. Removed for failing the branching
+test:
+
+- **`custody`** (ephemeral / stored / attested) — storage policy, not reasoning. No rule
+  branches on it; it decides whether `about` can point at an artifact, and that is all.
+- **the `review` ladder** (raw / machine_checked / human_reviewed / adjudicated) — collapses
+  into `about` plus provenance.
+- **`direct` vs `mediated` physical** — that is `addressed_by`, a relation, not a category.
+- **`inert`** as an effect — a bug detector, not a state. It belongs in a test.
 
 ---
 
 ## Open
 
-1. **Is `mediated physical` one class or a spectrum?** An SNMP counter and an OTDR fired
-   down a span addressed by a record differ in how much the addressing can hurt you.
-2. **Does `adjudicated` need an authority model** — who is allowed to settle a conflict —
-   or is "a human looked and decided" enough to start?
-3. **Ephemeral vs. stored.** The inspection walk's read-only guarantee is a real property,
-   argued for well in the README. AI capture needs stored artifacts. Are these two modes of
-   one system, or is the compliance walk simply not the thing that gets AI capture first?
+1. **Opportunity:** Preserve the three reasons (stale / contested / low-confidence) instead of collapsing them into `unverified`. `trust.lp:40-44` derives all three; `trust.lp:48` discards the distinction. The result: SAMS-5120 reports a *contradicted* record as "LOW CONFIDENCE" (false). Keeping the reasons would fix [INCIDENT.md §3](INCIDENT.md#3-a-contradicted-addressing-fact-forks-the-world).
+
+2. Is `model` one provenance or two — a model reading an artifact vs. a model reading text?
+   They fail differently enough that it may matter for rule extraction.

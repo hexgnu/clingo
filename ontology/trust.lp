@@ -33,15 +33,6 @@ fact(F) :- field_check(F, _).
 
 low_confidence(F) :- claim(S, F, C, _), min_confidence(M), C < M.
 
-% Where a provenance chain exists, the number that counts is the derived one, not the one
-% the holding system states. A row imported at 90% from a 60% inference is a 40% row.
-#defined effective_confidence/2.
-#defined never_grounded/1.
-low_confidence(F) :- effective_confidence(F, C), min_confidence(M), C < M.
-
-% And a value nobody ever grounded is suspect at any confidence.
-suspect(F) :- never_grounded(F).
-
 stale(F) :- claim(S, F, _, As), today(D), stale_after(Age), D - As > Age.
 
 % Two sources disagreeing about the same fact is worth more than either claim alone: it is
@@ -65,9 +56,6 @@ refuted(F) :- field_check(F, false).
 established(F) :- claim(_, F, _, _), not suspect(F), not refuted(F), not field_check(F, false).
 
 unverified(F) :- fact(F), suspect(F), not established(F), not refuted(F).
-
-% What the reasoner is willing to use.
-holds(F) :- established(F).
 
 % Facts worth confirming: an unverified fact that something actually depends on. Verifying
 % record rows nobody is relying on is busywork.

@@ -109,6 +109,8 @@ class Ticket(BaseModel):
         for alarm in self.alarms:
             lines.append(f"raw_alarm({src}, {asp_str(alarm.code)}).")
             if alarm.severity:
+                # X.733 perceived severity. Governs what the plan may spend, not what is
+                # true -- see ontology/x733.lp.
                 lines.append(f"alarm_severity({asp_str(alarm.code)}, {asp_id(alarm.severity)}).")
         for fact in self.facts:
             term = f"neg({asp_id(fact.fact)})" if fact.negated else asp_id(fact.fact)

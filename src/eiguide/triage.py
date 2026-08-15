@@ -26,7 +26,7 @@ import clingo
 
 from .ticket import Ticket, TriageResult, asp_id
 
-CORE = ("ontology/trust.lp", "ontology/diagnose.lp")
+CORE = ("ontology/trust.lp", "ontology/x733.lp", "ontology/diagnose.lp")
 
 
 @dataclass
@@ -47,29 +47,22 @@ def _programs(root: Path, knowledge: list[Path]) -> list[Path]:
     return [root / p for p in CORE] + list(knowledge)
 
 
-def solve(
+def _run(
     ticket: Ticket,
     knowledge: list[Path],
-    evidence: str = "",
-    root: Path = Path("."),
-) -> dict:
-    """One solve over the ticket plus everything learned so far."""
-    ctl = clingo.Control(["--opt-mode=optN", "--models=0"])
+    root: Path,
+    extra: str,
+    opts: tuple[str, ...] = ("--opt-mode=optN", "--models=0"),
+) -> list[dict]:
+    """Ground and solve once, returning every cost-optimal answer set."""
+    ctl = clingo.Control(list(opts))
     for path in _programs(root, knowledge):
         ctl.load(str(path))
     ctl.add("base", [], ticket.to_asp())
-    if evidence:
-        ctl.add("base", [], evidence)
+    if extra:
+        ctl.add("base", [], extra)
     ctl.ground([("base", [])])
 
-    # A cost-optimal plan is rarely unique -- this ticket has four at cost 6 -- and taking
-    # whichever the solver reported last means a technician can be handed different work on
-    # two identical runs. Collect the optima and pick one by a fixed rule.
-    #
-    # Only the *plan* varies: measured across the optima, every other atom is identical, and
-    # structurally nothing derived from do_test/1 feeds back into candidate/1 or solved/0.
-    # So the verdict never depended on this, and enumerating cautiously to protect it would
-    # be machinery for nothing. The plan still has to be reproducible.
     found: list[dict] = []
 
     def on_model(m: clingo.Model) -> None:
@@ -79,16 +72,86 @@ def solve(
 
     ctl.solve(on_model=on_model)
     if not found:
-        return {"cost": [0], "atoms": []}
+        return []
+    best = min(m["cost"] for m in found)
+    return [m for m in found if m["cost"] == best]
 
-    cheapest = min(m["cost"][0] if m["cost"] else 0 for m in found)
-    optimal = [m for m in found if (m["cost"][0] if m["cost"] else 0) == cheapest]
+
+def _atoms(model: dict, name: str) -> set[str]:
+    return {str(a[0]) for n, a in model["atoms"] if n == name and a}
+
+
+def solve(
+    ticket: Ticket,
+    knowledge: list[Path],
+    evidence: str = "",
+    root: Path = Path("."),
+) -> dict:
+    """Two passes over the ticket plus everything learned so far.
+
+    **Pass 1 enumerates the incident world.** Each answer set is one way things could be:
+    a minimal set of faults accounting for the reported alarms and surviving every reading
+    taken so far. The union of those worlds is what is *possible*; the intersection is what
+    is *certain*. Neither is visible from inside a single world, which is why this cannot be
+    one solve -- a world knows what it contains, not what the alternatives contain.
+
+    **Pass 2 plans against them.** With the possible and certain sets supplied as facts, the
+    solver picks the cheapest evidence that would tell the surviving worlds apart, and
+    decides whether they already agree well enough to act.
+
+    A cost-optimal plan is rarely unique -- this ticket has four at cost 6 -- and returning
+    whichever the solver reported last hands a technician different work on two identical
+    runs. The optima are collected and one is chosen by a fixed rule. Only the plan varies;
+    the union and intersection above are computed over *all* the optima, so the verdict does
+    not depend on which one is displayed.
+    """
+    # What is POSSIBLE is asked over every world, with optimization off. Occam decides what
+    # to act on; it must not decide what could be true. config_drift explains one of two
+    # alarms and so needs a partner -- less parsimonious, but not impossible, and a record it
+    # rests on is still worth checking.
+    reach = _run(
+        ticket, knowledge, root, evidence,
+        opts=("--opt-mode=ignore", "--models=0", "--enum-mode=brave"),
+    )
+    possible = _atoms(reach[-1], "fault") if reach else set()
+
+    # What is CERTAIN, and what the incident would have you do, are asked over the minimal
+    # worlds only.
+    worlds = _run(ticket, knowledge, root, evidence)
+    if not worlds:
+        return {"cost": [0], "atoms": [], "worlds": 0}
+
+    live = set().union(*(_atoms(w, "fault") for w in worlds))
+    certain = set.intersection(*(_atoms(w, "fault") for w in worlds))
+    may_do = set().union(*(_atoms(w, "resolves_to") for w in worlds))
+    will_do = set.intersection(*(_atoms(w, "resolves_to") for w in worlds))
+
+    supplied = "\n".join(
+        [f"candidate({h})." for h in sorted(possible)]
+        + [f"certain({h})." for h in sorted(certain)]
+        + [f"possible_action({r})." for r in sorted(may_do)]
+        + [f"certain_action({r})." for r in sorted(will_do)]
+    )
+
+    plans = _run(ticket, knowledge, root, f"{evidence}\n{supplied}")
+    if not plans:
+        return {"cost": [0], "atoms": [], "worlds": len(worlds)}
 
     def key(model: dict) -> tuple:
         tests = sorted(str(a[0]) for n, a in model["atoms"] if n == "do_test")
         return (len(tests), tests)
 
-    return min(optimal, key=key)
+    chosen = min(plans, key=key)
+    chosen["worlds"] = len(worlds)
+    # Two different sets, and the difference matters. `live` is what the minimal worlds still
+    # hold open -- the explanations actually in play, and what a person is shown. `possible`
+    # is wider: anything not ruled out, however unparsimonious. Verification planning uses the
+    # wider one deliberately, because a record worth checking is worth checking even if the
+    # explanation resting on it is the less economical reading.
+    chosen["atoms"] = chosen["atoms"] + [
+        ("live", [clingo.Function(h)]) for h in sorted(live)
+    ]
+    return chosen
 
 
 def outcomes(model: dict) -> dict[str, list[str]]:
@@ -134,7 +197,7 @@ def to_result(ticket: Ticket, model: dict) -> TriageResult:
     return TriageResult(
         ticket_id=ticket.ticket_id,
         solved=solved,
-        candidates=_collect(model, "candidate"),
+        candidates=_collect(model, "live"),
         provisional=_collect(model, "provisional"),
         eliminated=_collect(model, "eliminated"),
         next_tests=_collect(model, "do_test"),
@@ -142,7 +205,7 @@ def to_result(ticket: Ticket, model: dict) -> TriageResult:
         unrecognized_codes=sorted(unmapped),
         indistinguishable=[tuple(p) for p in _collect(model, "indistinguishable")],
         open_reasons=_collect(model, "unsolved_reason"),
-        recommended=_collect(model, "recommended"),
+        recommended=_collect(model, "advised"),
         truck_roll=any(name == "truck_roll" for name, _ in model["atoms"]),
         plan_cost=model["cost"][0] if model["cost"] else 0,
     )

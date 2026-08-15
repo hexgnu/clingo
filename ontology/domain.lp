@@ -36,12 +36,6 @@
 %   internal_to(L, R)          lead L runs entirely inside rack R
 %   group(G) / member(G, X)    a set of things one capture pass can sweep
 
-% Every cell is a subject in its own right, and belongs to its string's group.
-subject(cell(S, C)) :- cell(S, C).
-subject(S) :- battery_string(S).
-subject(P) :- fuse_panel(P).
-subject(L) :- lead(L).
-
 % Chapter H vocabulary. Added as declarations, not code.
 #defined cable_rack/1.
 #defined power_cable/1.
@@ -52,11 +46,6 @@ subject(L) :- lead(L).
 #defined gauge_2_0_or_larger/1.
 #defined power_bay/1.
 #defined distribution_circuit/1.
-
-subject(R) :- cable_rack(R).
-subject(C) :- power_cable(C).
-subject(B) :- power_bay(B).
-subject(X) :- distribution_circuit(X).
 
 % ---------------------------------------------------------------------------
 % Sweep groups
