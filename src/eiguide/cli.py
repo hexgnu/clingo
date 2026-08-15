@@ -114,6 +114,7 @@ def compile(
     rules_file: Annotated[Path, typer.Option(help="Structured rules.")] = DATA / "rules.jsonl",
     clauses_file: Annotated[Path, typer.Option()] = DATA / "clauses.jsonl",
     out_dir: Annotated[Path, typer.Option()] = RULES_DIR,
+    site: Annotated[Path | None, typer.Option(help="Also validate this site file.")] = None,
 ) -> None:
     """Compile structured rules into a clingo program."""
     rules = [r for r in read_jsonl(rules_file, Rule) if r.clause_id.startswith(f"{chapter}.")]
@@ -127,8 +128,17 @@ def compile(
     out.write_text(source, encoding="utf-8")
 
     problems = compile_mod.check_exemptions(rules)
-    for problem in problems:
-        console.print(f"[bold red]exemption not in force:[/bold red] {problem}")
+    if problems:
+        for problem in problems:
+            console.print(f"[bold red]exemption not in force:[/bold red] {problem}")
+        console.print(
+            "\n[red]Compilation succeeded but exemptions are not properly enforced.[/red]\n"
+            "This will produce incorrect verdicts - inspectors will be asked to verify\n"
+            "requirements that the standard explicitly exempts.\n"
+            "\n"
+            "Fix the guard predicates in the target rules to match the exemption conditions.\n"
+        )
+        raise typer.Exit(1)
 
     obligations = sum(1 for r in rules if r.kind == "obligation")
     exemptions = sum(1 for r in rules if r.kind == "exemption")
@@ -140,18 +150,45 @@ def compile(
     if unreviewed:
         console.print(f"[yellow]{unreviewed} rule(s) not yet reviewed[/yellow]")
 
+    # Optionally validate site file during compilation
+    if site:
+        console.print(f"\n[dim]Validating site file {site}...[/dim]")
+        programs = [ONTOLOGY / "core.lp", ONTOLOGY / "domain.lp", out]
+        _check_site(site, programs, strict=True)
 
-def _check_site(site: Path, programs: list[Path]) -> None:
-    """Warn loudly about site facts that cannot affect any verdict.
+
+def _check_site(site: Path, programs: list[Path], strict: bool = True) -> None:
+    """Validate site facts and fail on errors that would produce incomplete plans.
 
     A silently-ignored fact produces a plan that looks complete and is not, which is the
     one outcome this whole system is built to avoid.
+
+    Args:
+        site: Path to site .lp file
+        programs: Knowledge base .lp files
+        strict: If True (default), exit with error on validation problems.
+                If False, print warnings but continue (use with caution).
     """
     problems = validate_mod.validate_site(site, programs)
+    if not problems:
+        return
+
+    # Print all problems
     for problem in problems:
-        console.print(f"[bold yellow]site warning:[/bold yellow] {problem}")
-    if problems:
-        console.print()
+        console.print(f"[bold red]site error:[/bold red] {problem}")
+    console.print()
+
+    if strict:
+        console.print(
+            "[red]Site file has validation errors that would produce incomplete plans.[/red]\n"
+            "Fix these errors before planning. Common causes:\n"
+            "  • Typos in predicate names (e.g., 'fuse_pannel' vs 'fuse_panel')\n"
+            "  • Wrong arity (e.g., 'cell(bs1)' vs 'cell(bs1, 1)')\n"
+            "  • Using ';' in multi-argument predicates (splits arguments incorrectly)\n"
+            "\n"
+            "To proceed anyway (not recommended): use --no-strict flag"
+        )
+        raise typer.Exit(1)
 
 
 def _programs(chapters: list[str]) -> list[Path]:
@@ -171,13 +208,14 @@ def plan(
     chapter: Annotated[list[str], typer.Option(help="Chapters in scope.")] = ["D"],
     clauses_file: Annotated[Path, typer.Option()] = DATA / "clauses.jsonl",
     out: Annotated[Path | None, typer.Option(help="Also write the manifest as JSON.")] = None,
+    strict: Annotated[bool, typer.Option(help="Fail on site validation errors (recommended).")] = True,
 ) -> None:
     """Work out the cheapest set of captures that would settle every open requirement.
 
     Read-only. Writes nothing unless asked with --out.
     """
     programs = _programs(chapter)
-    _check_site(site, programs)
+    _check_site(site, programs, strict=strict)
     model = reason.solve(programs + [site], "")
 
     rules = _load_rules(DATA / "rules.jsonl", chapter)
@@ -220,6 +258,7 @@ def inspect(
     chapter: Annotated[list[str], typer.Option(help="Chapters in scope.")] = ["D"],
     clauses_file: Annotated[Path, typer.Option()] = DATA / "clauses.jsonl",
     detail: Annotated[bool, typer.Option(help="List every subject in the verdict.")] = False,
+    strict: Annotated[bool, typer.Option(help="Fail on site validation errors (recommended).")] = True,
 ) -> None:
     """Walk the site one action at a time, re-planning after each answer.
 
@@ -234,7 +273,7 @@ def inspect(
     inspected when it was not.
     """
     programs = _programs(chapter)
-    _check_site(site, programs)
+    _check_site(site, programs, strict=strict)
     programs = programs + [site]
     rules = _load_rules(DATA / "rules.jsonl", chapter)
     clauses = _clause_for_rule(_load_clauses(clauses_file), rules)
@@ -649,7 +688,10 @@ def _candidates_panel(answer) -> None:
 @app.command()
 def work(
     ticket_file: Annotated[Path, typer.Argument(help="Inbound ticket JSON.")],
-    knowledge: Annotated[list[Path] | None, typer.Option(help="Knowledge bases (.lp).")] = None,
+    knowledge: Annotated[
+        list[Path] | None,
+        typer.Option(help="Knowledge bases (.lp). Defaults to all files in knowledge/.")
+    ] = None,
 ) -> None:
     """Work a ticket interactively, re-solving after every answer.
 

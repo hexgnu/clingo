@@ -22,7 +22,7 @@ console = Console()
 
 def show_step(title: str, content: str, style="blue"):
     console.print()
-    console.print(Panel(content, title=title, border_style=style))
+    console.print(Panel(content, title=title, border_style=style, title_align="left"))
 
 
 def show_table_step(title: str, table: Table):
@@ -35,7 +35,7 @@ def main():
 
     # Opening scene
     show_step(
-        "🚨 PAGER ALERT — Saturday 03:47 MT",
+        "PAGER ALERT — Saturday 03:47 MT",
         "[bold red]DEN-PWR-8472[/bold red]\n"
         "Priority: P1\n"
         "Denver colocation — 23 devices unreachable\n"
@@ -90,7 +90,7 @@ def main():
 
     if result.provisional:
         console.print(
-            f"\n[yellow]⚠️  {len(result.provisional)} hypotheses are PROVISIONAL[/yellow]"
+            f"\n[yellow]WARNING: {len(result.provisional)} hypotheses are PROVISIONAL[/yellow]"
         )
         console.print("[dim]They depend on contradicted or stale records[/dim]")
 
@@ -118,7 +118,7 @@ def main():
     # Show recommended tests
     if result.next_tests or result.verify_records:
         console.print(
-            f"\n[bold cyan]💡 Solver recommends {len(result.next_tests)} tests "
+            f"\n[bold cyan]Solver recommends {len(result.next_tests)} tests "
             f"to discriminate[/bold cyan]"
         )
 
@@ -154,7 +154,7 @@ def main():
     result = to_result(ticket, model)
 
     # Show narrowed hypotheses
-    console.print("\n[bold green]✓ Evidence processed — re-solving...[/bold green]")
+    console.print("\n[bold green]Evidence processed — re-solving...[/bold green]")
 
     narrowed_table = Table(box=box.ROUNDED)
     narrowed_table.add_column("Explanation", style="cyan")
@@ -176,10 +176,10 @@ def main():
     # Check for critical dependency
     console.print("\n" + "─" * 60)
     show_step(
-        "⚠️  Critical Record Conflict",
+        "Critical Record Conflict",
         "[yellow]The diagnosis depends on: [bold]site_has_generator[/bold][/yellow]\n\n"
-        "• OneVizion says: [red]NO[/red] (60% conf, 5 days old)\n"
-        "• HyperLink says: [green]YES[/green] (85% conf, 60 days old)\n\n"
+        "OneVizion says: [red]NO[/red] (60% conf, 5 days old)\n"
+        "HyperLink says: [green]YES[/green] (85% conf, 60 days old)\n\n"
         "[bold]This matters:[/bold]\n"
         "  No generator → UPS depletes in 90min → total outage\n"
         "  Has generator → may auto-start → wait before dispatch",
@@ -205,7 +205,7 @@ def main():
 
     if result.solved:
         diagnosis = (
-            "[bold green]✓ DIAGNOSIS COMPLETE[/bold green]\n\n"
+            "[bold green]DIAGNOSIS COMPLETE[/bold green]\n\n"
             "[bold]Root Cause:[/bold] Utility power outage\n"
             "[bold]Critical Finding:[/bold] No backup generator\n"
             "[bold]Impact:[/bold] UPS depleted in ~90 minutes\n\n"

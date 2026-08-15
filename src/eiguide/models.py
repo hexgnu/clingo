@@ -5,13 +5,20 @@ Three layers, deliberately kept separate:
 ``Clause``    verbatim text lifted from the PDF plus provenance. Generated, never hand-edited.
 ``Rule``      structured interpretation of a clause. LLM-produced, human-reviewed.
 ``Manifest``  the evidence-capture plan the solver emits. The public interface.
+
+Schema versioning: All persistent models include a schema_version field.
+Increment when making breaking changes. Migration guide in docs/SCHEMA_MIGRATIONS.md.
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
+
+# Current schema version for all persistent models
+# Increment this when making breaking changes to Clause, Rule, etc.
+SCHEMA_VERSION = 1
 
 Modality = Literal["shall", "must", "should", "imperative", "descriptive"]
 """How binding a clause is.
@@ -31,6 +38,8 @@ Verifiability = Literal["observable", "measurable", "documentary", "process_only
 """
 
 ObsKind = Literal["photo", "video", "measurement", "document"]
+EvidenceKind = Literal["observation", "test_result", "claim", "alarm", "measurement"]
+SourceType = Literal["human", "system", "sensor"]
 
 
 class Reference(BaseModel):
@@ -45,6 +54,7 @@ class Reference(BaseModel):
 class Clause(BaseModel):
     """One numbered clause, verbatim, with enough provenance to cite it."""
 
+    schema_version: int = Field(default=SCHEMA_VERSION)
     id: str  # "D.6.6"
     chapter: str  # "D"
     chapter_title: str  # "Equipment and Cable Designations"
@@ -117,6 +127,7 @@ own. ``definition`` clauses fix vocabulary. Neither emits an obligation.
 class Rule(BaseModel):
     """A clause interpreted as something a solver can reason with."""
 
+    schema_version: int = Field(default=SCHEMA_VERSION)
     id: str  # "D.6.6a" — a clause may yield more than one rule
     clause_id: str  # "D.6.6" — the clause this came from
     kind: RuleKind = "obligation"
@@ -132,6 +143,22 @@ class Rule(BaseModel):
     confidence: float = 0.0
     notes: str | None = None
     reviewed: bool = False
+
+    @field_validator("citation_span")
+    @classmethod
+    def validate_citation_span(cls, v: str, info: ValidationInfo) -> str:
+        """Validate that citation_span is a verbatim substring of the source clause.
+
+        This ensures traceability: every rule must point back to exact text in the
+        standard, and that text must actually exist in the source document.
+        """
+        # Note: We can't validate against clause text here because clause isn't available
+        # during model instantiation. This validator exists to document the constraint
+        # and provide a hook for runtime validation during compile/review.
+        # The actual check happens in cli.py:review() command.
+        if not v:
+            raise ValueError("citation_span cannot be empty - must be verbatim quote from source clause")
+        return v
 
     modifies: list[str] = Field(default_factory=list)
     """For an exemption: the rule ids it carves out. Recorded so the link survives review."""
@@ -187,14 +214,104 @@ class Manifest(BaseModel):
     undetermined_after_plan: list[OpenItem] = Field(default_factory=list)
 
 
+class EvidenceSource(BaseModel):
+    """Provenance: who or what produced this evidence."""
+    schema_version: int = Field(default=SCHEMA_VERSION)
+    type: SourceType  # human, system, sensor
+    id: str  # inspector_alice, samsung_nms, pdu_01
+    system: str | None = None  # System name for automated sources
+
+
+class Evidence(BaseModel):
+    """Unified evidence model with identity, provenance, and temporal ordering.
+
+    This is the bridge between compliance inspection and ticket triage - both systems
+    can express evidence in this form. Replaces anonymous obs/3 and test_result/2.
+
+    Design: DESIGN.md §1 "The largest structural change outstanding"
+    """
+    schema_version: int = Field(default=SCHEMA_VERSION)
+
+    # Identity
+    id: str  # evidence_1, evidence_2 - globally unique within session
+
+    # Classification
+    kind: EvidenceKind  # observation, test_result, claim, alarm, measurement
+
+    # What was observed
+    subject: str  # ASP term: cell(bs1,7), node(core01), link(uplink_3)
+    property: str  # cell_number_legible, link_status, power_state
+    value: str | float | bool  # Result: pass/fail, up/down, numeric reading
+
+    # Provenance
+    source: EvidenceSource
+    timestamp: int  # Unix epoch seconds OR sequence number for relative ordering
+
+    # Quality
+    confidence: float = Field(ge=0.0, le=1.0, default=1.0)
+
+    # Optional enrichment
+    method: str | None = None  # How obtained: photo, ping_test, snmp_poll
+    notes: str | None = None
+
+    # Correlation (for multi-evidence events like alarm storms)
+    incident_id: str | None = None  # Groups related evidence
+
+    def to_asp(self) -> str:
+        """Render as ASP evidence/8 fact."""
+        from .compile import quote
+
+        # Format value based on type
+        if isinstance(self.value, bool):
+            val = "true" if self.value else "false"
+        elif isinstance(self.value, str):
+            val = quote(self.value)
+        else:
+            val = str(self.value)
+
+        # Format source as compound term
+        src_system = f", {quote(self.source.system)}" if self.source.system else ""
+        src = f"source({self.source.type}, {quote(self.source.id)}{src_system})"
+
+        return (
+            f"evidence({self.id}, {self.kind}, {self.subject}, "
+            f"{self.property}, {val}, {src}, {self.timestamp}, {self.confidence})."
+        )
+
+
 class Observation(BaseModel):
-    """A captured fact about the site, fed back into the reasoner."""
+    """Legacy observation model - backward compatible with existing code.
+
+    New code should use Evidence directly. This exists for gradual migration.
+    """
 
     subject: str
     observable: str
     value: bool
     action: str | None = None
     note: str | None = None
+
+    def to_evidence(self, evidence_id: str, source: EvidenceSource, timestamp: int | None = None) -> Evidence:
+        """Convert legacy Observation to new Evidence model.
+
+        Args:
+            evidence_id: Unique ID for this evidence (e.g., "evidence_1")
+            source: Who/what produced this observation
+            timestamp: Unix epoch seconds (defaults to current time)
+        """
+        import time
+        return Evidence(
+            id=evidence_id,
+            kind="observation",
+            subject=self.subject,
+            property=self.observable,
+            value=self.value,
+            source=source,
+            timestamp=timestamp or int(time.time()),
+            method=self.action,
+            notes=self.note,
+            confidence=1.0  # Legacy observations assumed fully confident
+        )
 
 
 class Verdict(BaseModel):

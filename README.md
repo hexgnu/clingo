@@ -1,19 +1,19 @@
-# eiguide
+# ASP for Two Inverse Reasoning Problems
 
-Turns a paginated engineering standard into a declarative ruleset, then **inverts it** to
-drive an evidence-capture walkthrough.
-
-The question this answers is not "here are the rules, go read them." It is:
-
-> Given this site, and given what I have already observed, **what is the smallest set of
-> things I can go and capture that would settle whether it is compliant?**
-
-Source document: *Level 3 Communications — Engineering & Installation Guidelines 6.0,
-DC Power & Infrastructure* (121 pages, 556 clauses, 385 of them binding).
+Answer Set Programming (clingo) solving **forward** and **inverse** reasoning under partial observation.
 
 ---
 
-## The idea
+## The Two Problems
+
+### 1. Compliance: "What must be TRUE?" (forward)
+
+**Given:** Engineering standard (121-page PDF)  
+**Question:** What evidence do I need to collect to prove this site is compliant?
+
+```bash
+uv run eiguide plan   # → 8 capture actions close 71 gaps across 9 requirements
+```
 
 A requirement under partial observation has **three** states, not two:
 
@@ -23,31 +23,62 @@ A requirement under partial observation has **three** states, not two:
 | `violated` | evidence shows it is not |
 | `undetermined` | **nobody has looked yet** |
 
-Collapsing `undetermined` into "not violated" is what makes an ordinary rules engine
-useless for inspection: it reports a site clean because nothing has been checked. Answer
-Set Programming keeps the third state, and that set of undetermined requirements *is* the
-work list.
+Collapsing `undetermined` into "not violated" is what makes ordinary rules engines useless: 
+they report a site clean because nothing has been checked. Answer Set Programming keeps the 
+third state, and that set of undetermined requirements *is* the work list.
 
-From there the capture plan is an optimization: one pass down a battery string settles the
-same observable for all 24 cells, so choosing the cheapest set of physical actions that
-closes every gap is a weighted set-cover problem. `clingo`'s `#minimize` solves it.
-Datalog and OPA/Rego can evaluate rules; neither does this part.
+The capture plan is an optimization: one pass down a battery string settles 24 cells at once,
+so choosing the cheapest set of physical actions that closes every gap is a weighted set-cover 
+problem. `clingo`'s `#minimize` solves it.
 
-**Result on the example site: 8 capture actions close 71 evidence gaps across 9 requirements.**
+### 2. Diagnosis: "What WENT WRONG?" (inverse)
 
-## Pipeline
+**Given:** Alarm symptoms from production outage  
+**Question:** What broke, and what's the cheapest way to confirm?
 
-```
-EIGuide-61[1].pdf
-  │  extract    pymupdf + inferred layout      →  data/clauses.jsonl   (verbatim + provenance)
-  │  (author)   structured interpretation      →  data/rules.jsonl     (reviewed by a human)
-  │  compile    mechanical, no judgement       →  rules/chapter_d.lp
-  ↓  reason     clingo  ← ontology/ + sites/   →  manifest / verdicts
+```bash
+uv run python demo_diagnosis.py   # Saturday 3AM oncall scenario
 ```
 
-Three layers on purpose. Re-extracting from a new revision of the PDF regenerates
-`clauses.jsonl` and `chapter_*.lp` but never touches the hand-written `ontology/`, and
-every ASP atom traces back to a page and a clause number.
+A fault under partial observation has **three** states:
+
+| | meaning |
+|---|---|
+| `established` | evidence confirms it |
+| `refuted` | evidence rules it out |
+| `unverified` | **nobody has tested yet** |
+
+ASP enumerates **all minimal explanations** consistent with symptoms, then optimizes the test
+plan to discriminate between them. $1 telemetry vs $1200 truck roll.
+
+**Result:** 4 hypotheses → 1 confirmed in 2 rounds.
+
+---
+
+## Why ASP? (Not Rules or Datalog)
+
+Both problems need three capabilities **only ASP provides**:
+
+| Capability | Rule Engine | Datalog | ASP |
+|---|---|---|---|
+| **Open-world reasoning** (unknown ≠ false) | ❌ | ❌ | ✅ three-valued logic |
+| **Enumerate all minimal solutions** | ❌ picks one | ❌ derives all | ✅ answer sets |
+| **Optimize over solutions** | ❌ | ❌ | ✅ #minimize |
+
+See [WHY_ASP.md](WHY_ASP.md) for the full explanation.
+
+## The Mirror Structure
+
+Both use the same ASP pattern, inverted:
+
+| | Compliance (forward) | Diagnosis (inverse) |
+|---|---|---|
+| **Input** | Rules from PDF | Symptoms from alarms |
+| **Unknown** | What evidence exists? | What fault occurred? |
+| **Three-valued** | satisfied / violated / undetermined | established / refuted / unverified |
+| **Enumerate** | All ways to satisfy (gaps) | All minimal explanations |
+| **Optimize** | Cheapest capture plan | Cheapest test plan |
+| **Output** | Compliance verdict | Root cause |
 
 ## Quickstart
 
@@ -62,30 +93,20 @@ uv run eiguide inspect                 # walk it and get the verdict (single ses
 uv run eiguide prove                   # test whether the solver earns its place
 ```
 
-### Interactive Ticket Diagnosis Demo ⚡ NEW
+### Ticket Diagnosis Demo
 
-**Saturday 3:47 AM. Your pager goes off. Denver colo: 23 devices down.**
-
-Watch the solver narrow from 4 hypotheses to root cause through cost-optimal testing:
-
-```bash
-uv run python demo_diagnosis.py
-```
-
-**[→ 60-second walkthrough](QUICKSTART_DIAGNOSIS.md)** · **[→ Why ASP?](WHY_ASP.md)** · **[→ Full scenario](scenarios/production_outage.md)**
-
-**What makes this work?** Answer Set Programming does three things no rule engine or
-Datalog system can:
-1. Enumerates **all minimal explanations** (not just one guess)
-2. Keeps **contradicted records visible** (three-valued logic)
-3. Picks the **cheapest tests to discriminate** (#minimize over set-cover)
+Field technician gets a ticket: NODE-UNREACH alarm, one device down. The system enumerates
+possible causes and asks cheapest tests to discriminate:
 
 ```bash
-# Or run interactively
-uv run eiguide work tickets/den_outage_live.json \
-  --knowledge knowledge/vendor_codes.lp \
-  --knowledge knowledge/datacenter_faults.lp
+uv run eiguide work tickets/den_demo.json
 ```
+
+Watch it narrow the hypothesis space with each test result. The solver eliminates incompatible
+explanations after each round until either one is confirmed or it reaches an impasse (requires
+truck roll or more knowledge).
+
+See [WHY_ASP.md](WHY_ASP.md) for why this requires ASP.
 
 `plan` and `inspect` are both **read-only**. An inspection is one session start to finish:
 answers live in memory, the verdict prints at the end, nothing is written. A half-finished

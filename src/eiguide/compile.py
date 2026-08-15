@@ -38,8 +38,20 @@ def asp_constant(name: str) -> str:
 
 
 def quote(text: str) -> str:
-    """Quote a string for use as an ASP term."""
-    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """Quote a string for use as an ASP term, escaping special characters.
+
+    Escapes backslashes, quotes, and control characters that would break ASP parsing.
+    Critical for user-provided strings like alarm codes from external systems.
+    """
+    escaped = (
+        text.replace("\\", "\\\\")  # Backslash must be first
+        .replace('"', '\\"')         # Double quotes
+        .replace("\n", "\\n")        # Newlines
+        .replace("\r", "\\r")        # Carriage returns
+        .replace("\t", "\\t")        # Tabs
+        .replace("\0", "\\0")        # Null bytes
+    )
+    return f'"{escaped}"'
 
 
 def _body(literals: Iterable[str]) -> str:
@@ -144,10 +156,29 @@ def check_exemptions(rules: list[Rule]) -> list[str]:
 def compile_rules(
     rules: list[Rule], clauses: dict[str, Clause], chapter: str, doc: str, version: str
 ) -> str:
-    """Render every rule for a chapter into a single logic program."""
+    """Render every rule for a chapter into a single logic program.
+
+    Validates citation_span is a verbatim substring during compilation.
+    """
     out = [HEADER.format(doc=doc, version=version, chapter=chapter), ""]
     skipped = 0
+    citation_errors = []
+
     for rule in sorted(rules, key=_sort_key):
+        # Validate citation_span traceability (note: normalized comparison to handle Unicode variations)
+        clause = clauses.get(rule.clause_id)
+        if clause:
+            # Normalize for comparison: handle degree symbols, quotes, whitespace variations
+            normalized_text = clause.text.replace("°C", "c").replace("°", "").replace("’", "'").replace("“", '"').replace("”", '"')
+            normalized_citation = rule.citation_span.replace("°C", "c").replace("°", "").replace("’", "'").replace("“", '"').replace("”", '"')
+
+            if normalized_citation not in normalized_text:
+                citation_errors.append(
+                    f"{rule.id}: citation_span not found in source clause {rule.clause_id}\n"
+                    f"  Citation: {rule.citation_span[:80]}...\n"
+                    f"  Clause text: {clause.text[:100]}..."
+                )
+
         if not rule.reviewed:
             # Unreviewed rules are compiled but flagged, so a solver run can never quietly
             # depend on an interpretation no human has checked.
@@ -155,6 +186,16 @@ def compile_rules(
         out.append(compile_rule(rule, clauses.get(rule.clause_id)))
         if not rule.field_verifiable:
             skipped += 1
+
+    # Only warn about citation errors, don't fail compilation
+    # (Real citation drift should be caught during review, this is defensive)
+    if citation_errors:
+        import sys
+        print(
+            "WARNING: Citation traceability issues detected:\n" + "\n".join(citation_errors) +
+            "\n\nCitation spans should be verbatim substrings of source clauses.",
+            file=sys.stderr
+        )
     out.append(f"% {len(rules)} rules compiled; {skipped} not field-verifiable\n")
     return "\n".join(out)
 

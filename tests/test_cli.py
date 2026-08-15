@@ -181,7 +181,9 @@ class TestSiteWarnings:
         bad.write_text("battery_string(bs1).\ncell(bs1, 1..3).\nfuse_pannel(fp1).\n")
         try:
             result = invoke(with_clauses, ["plan", "--site", "sites/bad.lp"])
-            assert "site warning" in result.output
+            # Now fails fast with "site error" instead of warning
+            assert result.exit_code == 1
+            assert "site error" in result.output
             assert "fuse_pannel" in result.output
         finally:
             bad.unlink()

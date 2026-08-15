@@ -18,6 +18,8 @@ import clingo
 
 from .models import (
     Action,
+    Evidence,
+    EvidenceSource,
     Citation,
     Clause,
     Discharge,
@@ -66,13 +68,54 @@ def solve(program_files: list[Path], facts: str = "") -> Model:
 
     So all optima are collected and one is chosen by a stable rule: fewest actions first,
     then lexicographic order. Arbitrary, but *fixed*.
+
+    Raises:
+        RuntimeError: If ASP files contain syntax errors, grounding fails, or solver crashes.
     """
-    ctl = clingo.Control(["--opt-mode=optN", "--models=0"])
-    for path in program_files:
-        ctl.load(str(path))
+    try:
+        ctl = clingo.Control(["--opt-mode=optN", "--models=0"])
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize clingo solver: {e}") from e
+
+    try:
+        for path in program_files:
+            ctl.load(str(path))
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Failed to load ASP program files. This usually means:\n"
+            f"  • Syntax error in one of the .lp files\n"
+            f"  • File not found or not readable\n"
+            f"  • Invalid ASP structure\n"
+            f"Files: {', '.join(str(p) for p in program_files)}\n"
+            f"Error: {e}"
+        ) from e
+
     if facts:
-        ctl.add("base", [], facts)
-    ctl.ground([("base", [])])
+        try:
+            ctl.add("base", [], facts)
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Failed to add inline facts to ASP program. Check for:\n"
+                f"  • Invalid ASP syntax in generated facts\n"
+                f"  • Special characters not properly escaped\n"
+                f"Facts:\n{facts}\n"
+                f"Error: {e}"
+            ) from e
+
+    try:
+        from rich.console import Console
+        console = Console(stderr=True)
+        console.print("[dim]Grounding program...[/dim]")
+        ctl.ground([("base", [])])
+        console.print("[dim]Solving...[/dim]")
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"ASP grounding failed. This usually means:\n"
+            f"  • Contradictory facts in site file\n"
+            f"  • Undefined predicates referenced\n"
+            f"  • Infinite grounding (unbounded variables)\n"
+            f"Error: {e}"
+        ) from e
 
     candidates: list[Model] = []
     best = Model()
@@ -104,7 +147,25 @@ def solve(program_files: list[Path], facts: str = "") -> Model:
                 found.action_kind[str(args[0])] = str(args[1])
         candidates.append(found)
 
-    ctl.solve(on_model=on_model)
+    try:
+        result = ctl.solve(on_model=on_model)
+    except RuntimeError as e:
+        raise RuntimeError(f"Solver execution failed: {e}") from e
+
+    # Check for UNSATISFIABLE - happens when constraints are contradictory
+    if result.unsatisfiable:
+        raise RuntimeError(
+            "Solver determined the constraints are UNSATISFIABLE. This means:\n"
+            "  • Site facts are contradictory (e.g., declared 24 cells but site has 50)\n"
+            "  • Impossible combination of requirements and site state\n"
+            "  • Conflicting declarations in the knowledge base\n"
+            "\n"
+            "Check your site file for:\n"
+            "  • Duplicate or conflicting facts about the same entity\n"
+            "  • Cell counts, IDs, or relationships that don't match reality\n"
+            "  • Facts that violate integrity constraints"
+        )
+
     if not candidates:
         return best
 
@@ -113,12 +174,34 @@ def solve(program_files: list[Path], facts: str = "") -> Model:
     return min(optimal, key=lambda m: (len(m.do), sorted(str(a) for a in m.do)))
 
 
-def observations_to_facts(observations: list[Observation]) -> str:
-    """Render captured observations as ASP facts."""
+def observations_to_facts(observations: list[Observation], source: EvidenceSource | None = None) -> str:
+    """Render captured observations as ASP facts.
+
+    Generates both legacy obs/3 facts and new evidence/8 facts for gradual migration.
+    New evidence/8 facts include identity, provenance, and temporal ordering.
+
+    Args:
+        observations: List of observations to convert
+        source: Evidence source (defaults to anonymous inspector)
+    """
+    from .models import EvidenceSource, Evidence
+    import time
+
+    if source is None:
+        source = EvidenceSource(type="human", id="inspector", system=None)
+
     lines = []
-    for o in observations:
+    timestamp = int(time.time())
+
+    for i, o in enumerate(observations):
+        # Legacy obs/3 format - backward compatibility
         value = "true" if o.value else "false"
         lines.append(f"obs({o.subject}, {o.observable}, {value}).")
+
+        # New evidence/8 format - rich metadata
+        ev = o.to_evidence(f"evidence_{i}", source, timestamp + i)  # Sequence timestamps
+        lines.append(ev.to_asp())
+
     return "\n".join(lines)
 
 

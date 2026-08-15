@@ -85,11 +85,21 @@ def extract(
     Returns the artifacts plus any warnings about the source document itself -- currently
     repeated clause numbers, which are the standard's own defects rather than parsing
     failures, but which callers must know about.
+
+    Raises:
+        RuntimeError: If PDF parsing fails or produces invalid/empty results.
     """
-    doc = pymupdf.open(pdf_path)
+    try:
+        doc = pymupdf.open(pdf_path)
+    except Exception as e:
+        raise RuntimeError(f"Failed to open PDF at {pdf_path}: {e}") from e
+
     warnings: list[str] = []
     try:
-        lay = layout.analyze(doc)
+        try:
+            lay = layout.analyze(doc)
+        except Exception as e:
+            raise RuntimeError(f"Failed to analyze document layout: {e}") from e
         chapter_titles = _chapter_titles(lay)
 
         clauses: list[Clause] = []
@@ -171,6 +181,32 @@ def extract(
             TableData(page=t.page, page_label=t.page_label, chapter=_chapter_of(t.page_label), rows=t.rows)
             for t in lay.tables
         ]
+
+        # Post-extraction validation: ensure we got meaningful results
+        if not clauses:
+            raise RuntimeError(
+                f"PDF extraction produced zero clauses from {pdf_path}. "
+                "This indicates either: (1) PDF has no structured content, "
+                "(2) layout analysis failed to detect numbered paragraphs, or "
+                "(3) PDF structure is malformed. Check that the PDF contains "
+                "numbered requirements and is not corrupted."
+            )
+
+        # Sanity check: expected volume for engineering standards (adjustable per doc type)
+        if len(clauses) < 10:
+            warnings.append(
+                f"Warning: Only {len(clauses)} clauses extracted. This is unusually low "
+                "for an engineering standard. Verify the PDF is complete and properly formatted."
+            )
+
+        # Check that chapters were detected
+        chapters = {c.chapter for c in clauses}
+        if not chapters or chapters == {"-"}:
+            warnings.append(
+                "Warning: No chapter structure detected (all clauses in synthetic chapter '-'). "
+                "Verify page numbering follows expected format (e.g., 'D-4')."
+            )
+
         return clauses, figures, tables, warnings
     finally:
         doc.close()

@@ -1,0 +1,16 @@
+{
+  "ticket_id": "DEN-DEMO-001",
+  "source": "samsung_nms",
+  "kind": "facility_event",
+  "received_day": 150,
+  "asset_id": "den_dc2",
+  "alarms": [
+    {"code": "NODE-UNREACH", "raised_day": 150, "severity": "critical"}
+  ],
+  "facts": [
+    {"source": "onevizion", "fact": "utility_power_stable", "confidence": 95, "as_of_day": 149},
+    {"source": "onevizion", "fact": "upstream_agg_known", "confidence": 92, "as_of_day": 140},
+    {"source": "hyperlink", "fact": "hvac_operational", "confidence": 88, "as_of_day": 120},
+    {"source": "onevizion", "fact": "site_has_generator", "confidence": 90, "as_of_day": 145}
+  ]
+}

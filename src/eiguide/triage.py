@@ -55,14 +55,26 @@ def _run(
     extra: str,
     opts: tuple[str, ...] = ("--opt-mode=optN", "--models=0"),
 ) -> list[dict]:
-    """Ground and solve once, returning every cost-optimal answer set."""
-    ctl = clingo.Control(list(opts))
-    for path in _programs(root, knowledge):
-        ctl.load(str(path))
-    ctl.add("base", [], ticket.to_asp())
-    if extra:
-        ctl.add("base", [], extra)
-    ctl.ground([("base", [])])
+    """Ground and solve once, returning every cost-optimal answer set.
+
+    Raises:
+        RuntimeError: If knowledge base files contain errors or solver fails.
+    """
+    try:
+        ctl = clingo.Control(list(opts))
+        for path in _programs(root, knowledge):
+            ctl.load(str(path))
+        ctl.add("base", [], ticket.to_asp())
+        if extra:
+            ctl.add("base", [], extra)
+        ctl.ground([("base", [])])
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Failed to load/ground triage knowledge base:\n"
+            f"  Ticket: {ticket.id}\n"
+            f"  Knowledge: {[k.stem for k in knowledge]}\n"
+            f"  Error: {e}"
+        ) from e
 
     found: list[dict] = []
 
@@ -71,7 +83,11 @@ def _run(
             {"cost": list(m.cost), "atoms": [(s.name, s.arguments) for s in m.symbols(shown=True)]}
         )
 
-    ctl.solve(on_model=on_model)
+    try:
+        ctl.solve(on_model=on_model)
+    except RuntimeError as e:
+        raise RuntimeError(f"Triage solver execution failed: {e}") from e
+
     if not found:
         return []
     best = min(m["cost"] for m in found)
