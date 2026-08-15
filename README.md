@@ -51,6 +51,8 @@ every ASP atom traces back to a page and a clause number.
 
 ## Quickstart
 
+### Compliance Inspection (main use case)
+
 ```bash
 uv sync
 uv run eiguide extract                 # PDF  -> 556 clauses, 59 figures, 40 tables
@@ -58,6 +60,31 @@ uv run eiguide compile --chapter D     # rules -> rules/chapter_d.lp
 uv run eiguide plan                    # what to capture, cheapest first (read-only)
 uv run eiguide inspect                 # walk it and get the verdict (single session)
 uv run eiguide prove                   # test whether the solver earns its place
+```
+
+### Interactive Ticket Diagnosis Demo ⚡ NEW
+
+**Saturday 3:47 AM. Your pager goes off. Denver colo: 23 devices down.**
+
+Watch the solver narrow from 4 hypotheses to root cause through cost-optimal testing:
+
+```bash
+uv run python demo_diagnosis.py
+```
+
+**[→ 60-second walkthrough](QUICKSTART_DIAGNOSIS.md)** · **[→ Why ASP?](WHY_ASP.md)** · **[→ Full scenario](scenarios/production_outage.md)**
+
+**What makes this work?** Answer Set Programming does three things no rule engine or
+Datalog system can:
+1. Enumerates **all minimal explanations** (not just one guess)
+2. Keeps **contradicted records visible** (three-valued logic)
+3. Picks the **cheapest tests to discriminate** (#minimize over set-cover)
+
+```bash
+# Or run interactively
+uv run eiguide work tickets/den_outage_live.json \
+  --knowledge knowledge/vendor_codes.lp \
+  --knowledge knowledge/datacenter_faults.lp
 ```
 
 `plan` and `inspect` are both **read-only**. An inspection is one session start to finish:

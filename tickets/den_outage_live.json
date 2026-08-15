@@ -1,0 +1,20 @@
+{
+  "ticket_id": "DEN-OUTAGE-001",
+  "source": "samsung_nms",
+  "kind": "facility_event",
+  "received_day": 150,
+  "asset_id": "den_dc2",
+  "alarms": [
+    {"code": "NODE-UNREACH", "raised_day": 150, "severity": "critical"},
+    {"code": "AC-INPUT-FAIL", "raised_day": 150, "severity": "major"},
+    {"code": "BATTERY-MODE", "raised_day": 150, "severity": "warning"}
+  ],
+  "facts": [
+    {"source": "onevizion", "fact": "site_has_generator", "confidence": 60, "as_of_day": 145, "negated": true},
+    {"source": "hyperlink", "fact": "site_has_generator", "confidence": 85, "as_of_day": 90},
+
+    {"source": "onevizion", "fact": "utility_power_stable", "confidence": 95, "as_of_day": 149},
+    {"source": "onevizion", "fact": "upstream_agg_known", "confidence": 92, "as_of_day": 140},
+    {"source": "hyperlink", "fact": "hvac_operational", "confidence": 88, "as_of_day": 120}
+  ]
+}

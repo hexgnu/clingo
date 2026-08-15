@@ -19,6 +19,12 @@ maps_to(samsung_nms, "OPT-LOW",       loss_of_signal).
 maps_to(netcool, "LinkDown",          node_unreachable).
 maps_to(netcool, "SignalLoss",        loss_of_signal).
 
+% Datacenter / facility alarms
+maps_to(samsung_nms, "AC-INPUT-FAIL", ac_input_fail).
+maps_to(samsung_nms, "BATTERY-MODE",  battery_mode).
+maps_to(samsung_nms, "TEMP-HIGH",     high_temperature).
+maps_to(samsung_nms, "PHYSICAL-ALARM", physical_alarm).
+
 % A code nobody has mapped. Reported, never dropped: an unrecognized alarm means the
 % ticket carries information the knowledge base cannot use, and a diagnosis reached
 % without it is not trustworthy however tidy it looks.

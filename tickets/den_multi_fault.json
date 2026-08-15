@@ -1,0 +1,19 @@
+{
+  "ticket_id": "DEN-CASCADE-9183",
+  "source": "samsung_nms",
+  "kind": "facility_event",
+  "received_day": 150,
+  "asset_id": "den_dc2",
+  "alarms": [
+    {"code": "NODE-UNREACH", "raised_day": 150, "severity": "critical"},
+    {"code": "AC-INPUT-FAIL", "raised_day": 150, "severity": "major"},
+    {"code": "BATTERY-MODE", "raised_day": 150, "severity": "warning"},
+    {"code": "TEMP-HIGH", "raised_day": 150, "severity": "major"}
+  ],
+  "facts": [
+    {"source": "onevizion", "fact": "site_has_generator", "confidence": 95, "as_of_day": 148},
+    {"source": "onevizion", "fact": "utility_power_stable", "confidence": 92, "as_of_day": 149},
+    {"source": "onevizion", "fact": "upstream_agg_known", "confidence": 90, "as_of_day": 140},
+    {"source": "hyperlink", "fact": "hvac_operational", "confidence": 65, "as_of_day": 110}
+  ]
+}

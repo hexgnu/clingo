@@ -66,3 +66,6 @@ needs_verification(F) :- unverified(F), load_bearing(F).
 #show unverified/1.
 #show needs_verification/1.
 #show suspect/1.
+#show low_confidence/1.
+#show stale/1.
+#show contradicted/1.

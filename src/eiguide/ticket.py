@@ -20,24 +20,11 @@ them, refuse to declare the ticket solved, and say so.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-# ASP constants: lowercase, word characters only.
-_SAFE = re.compile(r"[^a-z0-9_]")
-
-
-def asp_id(value: str) -> str:
-    """Coerce an external identifier into a legal ASP constant."""
-    slug = _SAFE.sub("_", value.strip().lower()).strip("_")
-    slug = re.sub(r"_+", "_", slug) or "unknown"
-    return slug if slug[0].isalpha() else f"x_{slug}"
-
-
-def asp_str(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+from .compile import asp_constant, quote
 
 
 class InboundAlarm(BaseModel):
@@ -93,13 +80,13 @@ class Ticket(BaseModel):
         change; leaving it to the knowledge base keeps it data, and keeps unmapped codes
         visible to the reasoner rather than to a stack trace.
         """
-        tid = asp_id(self.ticket_id)
-        asset = asp_id(self.asset_id)
-        src = asp_id(self.source)
+        tid = asp_constant(self.ticket_id)
+        asset = asp_constant(self.asset_id)
+        src = asp_constant(self.source)
         lines = [
             f"% ingested from {self.source}: {self.ticket_id}",
             f"ticket({tid}).",
-            f"ticket_kind({tid}, {asp_id(self.kind)}).",
+            f"ticket_kind({tid}, {asp_constant(self.kind)}).",
             f"asset({asset}).",
             f"ticket_asset({tid}, {asset}).",
             f"today({self.received_day}).",
@@ -107,15 +94,15 @@ class Ticket(BaseModel):
             f"min_confidence({self.min_confidence}).",
         ]
         for alarm in self.alarms:
-            lines.append(f"raw_alarm({src}, {asp_str(alarm.code)}).")
+            lines.append(f"raw_alarm({src}, {quote(alarm.code)}).")
             if alarm.severity:
                 # X.733 perceived severity. Governs what the plan may spend, not what is
                 # true -- see ontology/x733.lp.
-                lines.append(f"alarm_severity({asp_str(alarm.code)}, {asp_id(alarm.severity)}).")
+                lines.append(f"alarm_severity({quote(alarm.code)}, {asp_constant(alarm.severity)}).")
         for fact in self.facts:
-            term = f"neg({asp_id(fact.fact)})" if fact.negated else asp_id(fact.fact)
+            term = f"neg({asp_constant(fact.fact)})" if fact.negated else asp_constant(fact.fact)
             lines.append(
-                f"claim({asp_id(fact.source)}, {term}, {fact.confidence}, {fact.as_of_day})."
+                f"claim({asp_constant(fact.source)}, {term}, {fact.confidence}, {fact.as_of_day})."
             )
         return "\n".join(lines)
 

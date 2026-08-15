@@ -24,7 +24,8 @@ from pathlib import Path
 
 import clingo
 
-from .ticket import Ticket, TriageResult, asp_id
+from .compile import asp_constant
+from .ticket import Ticket, TriageResult
 
 CORE = ("ontology/trust.lp", "ontology/x733.lp", "ontology/diagnose.lp")
 
@@ -121,10 +122,14 @@ def solve(
     if not worlds:
         return {"cost": [0], "atoms": [], "worlds": 0}
 
-    live = set().union(*(_atoms(w, "fault") for w in worlds))
-    certain = set.intersection(*(_atoms(w, "fault") for w in worlds))
-    may_do = set().union(*(_atoms(w, "resolves_to") for w in worlds))
-    will_do = set.intersection(*(_atoms(w, "resolves_to") for w in worlds))
+    # Cache atom extraction — iterate worlds once per predicate instead of 2n times
+    faults_by_world = [_atoms(w, "fault") for w in worlds]
+    resolves_by_world = [_atoms(w, "resolves_to") for w in worlds]
+
+    live = set().union(*faults_by_world)
+    certain = set.intersection(*faults_by_world)
+    may_do = set().union(*resolves_by_world)
+    will_do = set.intersection(*resolves_by_world)
 
     supplied = "\n".join(
         [f"candidate({h})." for h in sorted(possible)]
@@ -213,9 +218,9 @@ def to_result(ticket: Ticket, model: dict) -> TriageResult:
 
 def evidence_facts(results: dict[str, str], checks: dict[str, bool]) -> str:
     """Render what has been learned so far as ASP."""
-    lines = [f"test_result({asp_id(t)}, {asp_id(v)})." for t, v in sorted(results.items())]
+    lines = [f"test_result({asp_constant(t)}, {asp_constant(v)})." for t, v in sorted(results.items())]
     lines += [
-        f"field_check({asp_id(f)}, {'true' if v else 'false'})." for f, v in sorted(checks.items())
+        f"field_check({asp_constant(f)}, {'true' if v else 'false'})." for f, v in sorted(checks.items())
     ]
     return "\n".join(lines)
 
