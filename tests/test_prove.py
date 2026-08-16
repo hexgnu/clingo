@@ -1,6 +1,6 @@
 """The solver's claims, as regression tests.
 
-`eiguide prove` reports these numbers for a human. These tests assert the *claims* hold,
+`compli prove` reports these numbers for a human. These tests assert the *claims* hold,
 so a change to the cost model or the action tiers cannot quietly turn the argument for
 using a solver into an argument against it.
 """

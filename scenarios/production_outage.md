@@ -69,7 +69,7 @@ This scenario is captured in `tickets/den_outage_live.json`. The system doesn't 
 ### Step 1: Load the ticket
 
 ```bash
-uv run eiguide triage tickets/den_outage_live.json
+uv run compli triage tickets/den_outage_live.json
 ```
 
 The system enumerates **possible explanations** consistent with the alarms, accounting for:
@@ -105,7 +105,7 @@ Recommended tests (cost-ordered):
 ### Step 3: Run the diagnosis interactively
 
 ```bash
-uv run eiguide work tickets/den_outage_live.json
+uv run compli work tickets/den_outage_live.json
 ```
 
 You're walked through the cheapest tests first. After each result, the system **re-solves** — narrowing or eliminating hypotheses based on what you just learned.
@@ -208,10 +208,10 @@ The solver handles these — it keeps multiple hypotheses alive when evidence is
 
 ```bash
 # The Saturday 3am scenario
-uv run eiguide triage tickets/den_outage_live.json
+uv run compli triage tickets/den_outage_live.json
 
 # Interactive diagnostic walk
-uv run eiguide work tickets/den_outage_live.json
+uv run compli work tickets/den_outage_live.json
 
 # See what it's reasoning over
 cat knowledge/datacenter_faults.lp

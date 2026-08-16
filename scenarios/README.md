@@ -8,7 +8,7 @@ It's 3:47 AM Saturday. You're on call. Denver colocation just lit up with 23 ala
 
 ```bash
 # From the repo root
-uv run eiguide work tickets/den_outage_live.json \
+uv run compli work tickets/den_outage_live.json \
   --knowledge knowledge/vendor_codes.lp \
   --knowledge knowledge/datacenter_faults.lp
 ```

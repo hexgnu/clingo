@@ -128,7 +128,7 @@ class TestSecondChapterIsDataOnly:
         demonstration harness rather than part of the pipeline.
         """
         pipeline = [
-            ROOT / "src" / "eiguide" / name
+            ROOT / "src" / "compli" / name
             for name in (
                 "extract.py", "layout.py", "compile.py", "reason.py",
                 "models.py", "validate.py", "cli.py", "entities.py", "store.py",
