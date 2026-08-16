@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import pytest
 
-from eiguide.models import Manifest, Action, OpenItem, SCHEMA_VERSION
+from compli.models import Manifest, Action, OpenItem, SCHEMA_VERSION
 
 
 def test_manifest_has_schema_version():

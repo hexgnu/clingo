@@ -53,10 +53,10 @@ def version_callback(value: bool):
     """Display version and exit."""
     if value:
         try:
-            version = importlib.metadata.version("eiguide")
+            version = importlib.metadata.version("compli")
         except importlib.metadata.PackageNotFoundError:
             version = "dev"
-        console.print(f"eiguide version {version}")
+        console.print(f"compli version {version}")
         raise typer.Exit()
 
 
@@ -93,10 +93,10 @@ def _load_clauses(path: Path) -> dict[str, Clause]:
                 f"  Expected: {path}\n"
                 f"\n"
                 f"[cyan]→ Fix:[/cyan] Extract clauses from your PDF:\n"
-                f"    eiguide extract <your-pdf.pdf>\n"
+                f"    compli extract <your-pdf.pdf>\n"
                 f"\n"
                 f"[dim]Or with LLM (faster, needs API key):[/dim]\n"
-                f"    eiguide extract-llm <your-pdf.pdf>\n"
+                f"    compli extract-llm <your-pdf.pdf>\n"
                 f"\n"
                 f"[dim]Don't have a PDF? See examples/ for sample datasets[/dim]"
             )
@@ -106,7 +106,7 @@ def _load_clauses(path: Path) -> dict[str, Clause]:
                 f"The file exists but contains no clauses.\n"
                 f"\n"
                 f"[cyan]→ Fix:[/cyan] Re-run extraction:\n"
-                f"    eiguide extract <your-pdf.pdf>"
+                f"    compli extract <your-pdf.pdf>"
             )
 
     return {c.id: c for c in clauses}
@@ -138,17 +138,17 @@ def _load_rules(rules_file: Path, chapters: list[str], validate_citations: bool 
                 f"  Expected: {rules_file}\n"
                 f"\n"
                 f"[cyan]→ Fix:[/cyan] Compile your rules:\n"
-                f"    eiguide compile --chapter {' '.join(chapters)} --rules-file {rules_file}\n"
+                f"    compli compile --chapter {' '.join(chapters)} --rules-file {rules_file}\n"
                 f"\n"
                 f"[dim]Or extract rules from PDF with LLM:[/dim]\n"
-                f"    eiguide extract-llm <your-pdf.pdf> --out {rules_file}"
+                f"    compli extract-llm <your-pdf.pdf> --out {rules_file}"
             )
         else:
             console.print(
                 f"[yellow]Warning: Rules file is empty: {rules_file}[/yellow]\n"
                 f"\n"
                 f"[cyan]→ Fix:[/cyan] Extract rules from PDF:\n"
-                f"    eiguide extract-llm <your-pdf.pdf> --out {rules_file}"
+                f"    compli extract-llm <your-pdf.pdf> --out {rules_file}"
             )
 
     wanted = tuple(f"{c}." for c in chapters)
@@ -161,7 +161,7 @@ def _load_rules(rules_file: Path, chapters: list[str], validate_citations: bool 
             f"Available chapters in {rules_file.name}: {', '.join(sorted(available))}\n"
             f"\n"
             f"[cyan]→ Fix:[/cyan] Use an available chapter:\n"
-            f"    eiguide plan --chapter {','.join(sorted(available))} --site <site-file>"
+            f"    compli plan --chapter {','.join(sorted(available))} --site <site-file>"
         )
 
     # Optional: Validate citation_spans when loading for plan/inspect
@@ -281,7 +281,7 @@ def doctor() -> None:
 
     if errors == 0 and warnings == 0:
         console.print("\n[bold green]✓ Environment is healthy![/bold green]")
-        console.print("[dim]Try: eiguide plan --site sites/den01.lp[/dim]\n")
+        console.print("[dim]Try: compli plan --site sites/den01.lp[/dim]\n")
     elif errors == 0:
         console.print(f"\n[bold yellow]⚠ {warnings} warning(s) - environment mostly healthy[/bold yellow]\n")
     else:
@@ -344,7 +344,7 @@ def extract(
                 progress.update(task, description=f"✓ Extracted {n} rules", completed=True)
 
             console.print(f"\n[green]✓ Extracted {n} rules[/green] -> {out}")
-            console.print(f"[yellow]Review with:[/yellow] eiguide review --rules-file {out}")
+            console.print(f"[yellow]Review with:[/yellow] compli review --rules-file {out}")
         except Exception as e:
             logger.exception("Extraction failed")
             console.print(f"[red]Error: {e}[/red]")
@@ -389,7 +389,7 @@ def extract_llm(
     """Extract structured rules from PDF using LLM (BAML + Claude/Fireworks).
 
     This command uses LLM to interpret PDF content and generate structured Rule objects.
-    The output still requires human review via `eiguide review` before compilation.
+    The output still requires human review via `compli review` before compilation.
 
     Requires: ANTHROPIC_API_KEY or FIREWORKS_API_KEY environment variable.
     """
@@ -427,7 +427,7 @@ def extract_llm(
             progress.update(task, description=f"✓ Extracted {n} rules", completed=True)
 
         console.print(f"\n[green]✓ Extracted {n} rules[/green] -> {out}")
-        console.print(f"[yellow]Review with:[/yellow] eiguide review --rules-file {out}")
+        console.print(f"[yellow]Review with:[/yellow] compli review --rules-file {out}")
     except Exception as e:
         logger.exception("Extraction failed")
         console.print(f"[red]Error: {e}[/red]")
@@ -534,7 +534,7 @@ def _programs(chapters: list[str]) -> list[Path]:
         if not path.exists():
             console.print(
                 f"[red]Chapter ASP file missing: {path}[/red]\n"
-                f"Run [cyan]eiguide compile --chapter {ch}[/cyan] to compile rules into ASP"
+                f"Run [cyan]compli compile --chapter {ch}[/cyan] to compile rules into ASP"
             )
             raise typer.Exit(1)
         files.append(path)
@@ -826,7 +826,7 @@ def inspect(
         _print_rollup(verdicts, clauses, site.stem, len(recorded))
     _print_totals(verdicts)
     if not detail:
-        console.print("[dim]Every subject: eiguide inspect --detail[/dim]")
+        console.print("[dim]Every subject: compli inspect --detail[/dim]")
 
 
 def _clip(text: str, limit: int = 220) -> str:
@@ -1227,7 +1227,7 @@ def verify(
       2 - errors (missing files, invalid site, etc.)
 
     Example:
-      eiguide verify --site sites/den01.lp --observations captured.jsonl
+      compli verify --site sites/den01.lp --observations captured.jsonl
     """
     programs = _programs(chapter)
     _check_site(site, programs, strict=strict)

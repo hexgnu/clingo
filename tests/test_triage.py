@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from eiguide import triage
-from eiguide.ticket import SourceFact, Ticket
+from compli import triage
+from compli.ticket import SourceFact, Ticket
 
 ROOT = Path(__file__).resolve().parent.parent
 KB = [ROOT / "knowledge" / "vendor_codes.lp", ROOT / "knowledge" / "samsung_router.lp"]

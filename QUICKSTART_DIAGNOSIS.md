@@ -156,7 +156,7 @@ a three-valued model checker, and an ILP optimizer.
 uv run python demo_diagnosis.py
 
 # Multi-fault scenario (power + HVAC)
-uv run eiguide work tickets/den_multi_fault.json \
+uv run compli work tickets/den_multi_fault.json \
   --knowledge knowledge/vendor_codes.lp \
   --knowledge knowledge/datacenter_faults.lp
 ```

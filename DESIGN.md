@@ -33,7 +33,7 @@ If you were looking for the place where they meet, there isn't one yet. That is
 
 ```mermaid
 flowchart TB
-    subgraph C ["COMPLIANCE — eiguide plan / inspect"]
+    subgraph C ["COMPLIANCE — compli plan / inspect"]
         direction TB
         PDF["EIGuide-61.pdf"] -->|extract| JSONL["data/*.jsonl<br/>clauses, rules, tables"]
         JSONL -->|compile| GEN["rules/chapter_d.lp<br/>rules/chapter_h.lp<br/><i>GENERATED — disposable</i>"]
@@ -48,7 +48,7 @@ flowchart TB
         CORE --> OUT1["Manifest / Verdict"]
     end
 
-    subgraph T ["TICKET — eiguide triage / work"]
+    subgraph T ["TICKET — compli triage / work"]
         direction TB
         TJSON["tickets/*.json"] -->|ticket.to_asp| TFACTS["raw_alarm/2, claim/4<br/>alarm_severity/2"]
         VC["knowledge/vendor_codes.lp<br/>vendor code → probable cause"]

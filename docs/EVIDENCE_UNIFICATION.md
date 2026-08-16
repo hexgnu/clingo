@@ -14,7 +14,7 @@ generates both old and new formats, and is ready for full pipeline integration.
 
 ## What We Built
 
-### 1. Unified Evidence Model (`src/eiguide/models.py`)
+### 1. Unified Evidence Model (`src/compli/models.py`)
 
 ```python
 class Evidence(BaseModel):
@@ -82,7 +82,7 @@ incident_evidence(Inc, E) :-
     incident_id(E, Inc).
 ```
 
-### 3. Backward Compatibility (`src/eiguide/reason.py`)
+### 3. Backward Compatibility (`src/compli/reason.py`)
 
 ```python
 def observations_to_facts(observations: list[Observation], 

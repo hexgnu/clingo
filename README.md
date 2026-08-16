@@ -14,7 +14,7 @@ Answer Set Programming (clingo) solving **forward** and **inverse** reasoning un
 **Question:** What evidence do I need to collect to prove this site is compliant?
 
 ```bash
-uv run eiguide plan   # → 8 capture actions close 71 gaps across 9 requirements
+uv run compli plan   # → 8 capture actions close 71 gaps across 9 requirements
 ```
 
 A requirement under partial observation has **three** states, not two:
@@ -88,11 +88,11 @@ Both use the same ASP pattern, inverted:
 
 ```bash
 uv sync
-uv run eiguide extract                 # PDF  -> 556 clauses, 59 figures, 40 tables
-uv run eiguide compile --chapter D     # rules -> rules/chapter_d.lp
-uv run eiguide plan                    # what to capture, cheapest first (read-only)
-uv run eiguide inspect                 # walk it and get the verdict (single session)
-uv run eiguide prove                   # test whether the solver earns its place
+uv run compli extract                 # PDF  -> 556 clauses, 59 figures, 40 tables
+uv run compli compile --chapter D     # rules -> rules/chapter_d.lp
+uv run compli plan                    # what to capture, cheapest first (read-only)
+uv run compli inspect                 # walk it and get the verdict (single session)
+uv run compli prove                   # test whether the solver earns its place
 ```
 
 ### Ticket Diagnosis Demo
@@ -101,7 +101,7 @@ Field technician gets a ticket: NODE-UNREACH alarm, one device down. The system 
 possible causes and asks cheapest tests to discriminate:
 
 ```bash
-uv run eiguide work tickets/den_demo.json
+uv run compli work tickets/den_demo.json
 ```
 
 Watch it narrow the hypothesis space with each test result. The solver eliminates incompatible
@@ -163,7 +163,7 @@ Undetermined is not compliant -- it means nobody looked.
 
 ## Does the solver actually earn its place?
 
-`uv run eiguide prove` tests that claim against controls instead of asserting it. Each
+`uv run compli prove` tests that claim against controls instead of asserting it. Each
 experiment reports numbers either way, and the results are pinned in `tests/test_prove.py`
 so the argument cannot silently invert.
 
@@ -237,8 +237,8 @@ on_rack(pc1;pc2;pc3, rk1).
 
 looks like three cables on a rack. It actually asserts `on_rack(pc1)`, `on_rack(pc2)` and
 `on_rack(pc3, rk1)` — the `;` splits the atom, not the argument. Clingo reports nothing, and
-seven of nine cables silently vanished from a real plan during development. `eiguide plan`
-and `eiguide inspect` now refuse to stay quiet about it:
+seven of nine cables silently vanished from a real plan during development. `compli plan`
+and `compli inspect` now refuse to stay quiet about it:
 
 ```
 site warning: on_rack(pc1;pc2;pc3, rk1) uses ';' in a multi-argument predicate...
@@ -291,7 +291,7 @@ reported under "cannot be settled by capture" — visible rather than silently a
 ## Layout
 
 ```
-src/eiguide/
+src/compli/
   layout.py     document-agnostic structure recovery
   entities.py   generic threshold / literal / carve-out extraction
   extract.py    assembly and naming (thin)
@@ -311,7 +311,7 @@ data/golden/    hand-authored, reviewed rules for Chapter D §6
 
 ```bash
 uv run pytest                                   # 87 tests, ~30s
-uv run pytest --cov=eiguide --cov-report=term   # 93% line coverage
+uv run pytest --cov=compli --cov-report=term   # 93% line coverage
 ```
 
 | file | n | what it pins |
@@ -335,7 +335,7 @@ citation lookup.
   downstream is chapter-agnostic — scaling is a matter of authoring more rules.
 - Generating a first draft of those rules with an LLM is the obvious next step. Nothing
   downstream depends on how they were produced; the schema, the verbatim-`citation_span`
-  check, and `eiguide review` are the guardrails that stage would plug into.
+  check, and `compli review` are the guardrails that stage would plug into.
 - `Observable.accepts` holds a machine-checkable acceptance criterion for every capture
   request. Nothing evaluates it yet — that is the seam where vision-based verification
   attaches without reshaping the schema.

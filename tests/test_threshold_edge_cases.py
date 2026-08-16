@@ -3,8 +3,8 @@
 Verify that >= vs > comparisons work correctly at boundary values.
 """
 
-from eiguide.models import Rule, Observable, Clause
-from eiguide.ticket import Ticket, InboundAlarm
+from compli.models import Rule, Observable, Clause
+from compli.ticket import Ticket, InboundAlarm
 
 
 def test_confidence_threshold_at_boundary():

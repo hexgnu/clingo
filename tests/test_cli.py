@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from eiguide.cli import app
+from compli.cli import app
 
 ROOT = Path(__file__).resolve().parent.parent
 runner = CliRunner()
@@ -37,7 +37,7 @@ def workspace(tmp_path_factory, chapter_d_program):
 
 @pytest.fixture(scope="module")
 def with_clauses(workspace, clauses):
-    from eiguide.store import write_jsonl
+    from compli.store import write_jsonl
 
     write_jsonl(workspace / "data" / "clauses.jsonl", clauses)
     return workspace
@@ -50,7 +50,7 @@ def invoke(cwd: Path, args: list[str], stdin: str = ""):
     previous = os.getcwd()
     os.chdir(cwd)
     try:
-        import eiguide.cli as cli_mod
+        import compli.cli as cli_mod
 
         cli_mod.ROOT = cwd
         cli_mod.DATA = cwd / "data"

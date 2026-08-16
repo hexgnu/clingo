@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from eiguide.extract import extract
-from eiguide.models import Rule
-from eiguide.store import read_jsonl
+from compli.extract import extract
+from compli.models import Rule
+from compli.store import read_jsonl
 
 ROOT = Path(__file__).resolve().parent.parent
 PDF = ROOT / "EIGuide-61[1].pdf"
@@ -43,7 +43,7 @@ def golden_rules() -> list[Rule]:
 @pytest.fixture(scope="session")
 def chapter_d_program(tmp_path_factory, clause_index, golden_rules) -> Path:
     """Compile the golden Chapter D rules once for the whole session."""
-    from eiguide import compile as compile_mod
+    from compli import compile as compile_mod
 
     source = compile_mod.compile_rules(golden_rules, clause_index, "D", "EIGuide", "6.0")
     path = tmp_path_factory.mktemp("rules") / "chapter_d.lp"

@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from eiguide import compile as compile_mod
-from eiguide import reason, validate
-from eiguide.models import Rule
-from eiguide.store import read_jsonl
+from compli import compile as compile_mod
+from compli import reason, validate
+from compli.models import Rule
+from compli.store import read_jsonl
 
 ROOT = Path(__file__).resolve().parent.parent
 ONTOLOGY = [ROOT / "ontology" / "core.lp", ROOT / "ontology" / "domain.lp"]

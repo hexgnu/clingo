@@ -29,7 +29,7 @@ evidence(
 ### Python Data Model
 
 ```python
-# src/eiguide/models.py
+# src/compli/models.py
 
 class EvidenceSource(BaseModel):
     """Who or what produced this evidence."""

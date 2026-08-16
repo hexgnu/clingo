@@ -5,9 +5,9 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from eiguide.cli import app
-from eiguide.models import Observation
-from eiguide.store import write_jsonl
+from compli.cli import app
+from compli.models import Observation
+from compli.store import write_jsonl
 
 ROOT = Path(__file__).resolve().parent.parent
 runner = CliRunner()
@@ -16,8 +16,8 @@ runner = CliRunner()
 @pytest.fixture
 def workspace_with_obs(tmp_path, clauses, golden_rules, chapter_d_program):
     """Workspace with site, observations, rules, and clauses."""
-    from eiguide.store import write_jsonl
-    from eiguide import compile as compile_mod
+    from compli.store import write_jsonl
+    from compli import compile as compile_mod
 
     # Create directory structure
     (tmp_path / "data").mkdir()

@@ -10,8 +10,8 @@ These tests verify error handling and coordination between passes.
 from pathlib import Path
 import pytest
 
-from eiguide.ticket import Ticket, TriageResult
-from eiguide import triage
+from compli.ticket import Ticket, TriageResult
+from compli import triage
 
 ROOT = Path(__file__).resolve().parent.parent
 

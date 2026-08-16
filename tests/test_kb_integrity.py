@@ -3,9 +3,9 @@
 from pathlib import Path
 import pytest
 
-from eiguide.models import Rule
-from eiguide.store import read_jsonl
-from eiguide import validate
+from compli.models import Rule
+from compli.store import read_jsonl
+from compli import validate
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -163,7 +163,7 @@ def test_clause_references_are_valid():
     if not rules_file.exists() or not clauses_file.exists():
         pytest.skip("Golden data not available")
 
-    from eiguide.models import Clause
+    from compli.models import Clause
 
     rules = read_jsonl(rules_file, Rule)
     clauses = read_jsonl(clauses_file, Clause)

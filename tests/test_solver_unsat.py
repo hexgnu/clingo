@@ -6,7 +6,7 @@ due to contradictory facts, impossible constraints, or empty sites.
 
 import pytest
 from pathlib import Path
-from eiguide import reason
+from compli import reason
 
 
 def test_empty_site_returns_empty_model(tmp_path: Path) -> None:

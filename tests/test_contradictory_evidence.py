@@ -3,7 +3,7 @@
 from pathlib import Path
 import clingo
 
-from eiguide.models import Evidence, EvidenceSource
+from compli.models import Evidence, EvidenceSource
 
 ROOT = Path(__file__).resolve().parent.parent
 

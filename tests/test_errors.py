@@ -1,7 +1,7 @@
 """Test structured error reporting."""
 
 import json
-from eiguide.errors import ErrorCode, StructuredError
+from compli.errors import ErrorCode, StructuredError
 
 
 def test_error_code_values():

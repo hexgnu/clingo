@@ -6,7 +6,7 @@ threshold the reasoner never checks.
 
 from __future__ import annotations
 
-from eiguide.entities import extract_codes
+from compli.entities import extract_codes
 
 
 class TestQuantities:

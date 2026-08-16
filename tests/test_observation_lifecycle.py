@@ -3,9 +3,9 @@
 from pathlib import Path
 import pytest
 
-from eiguide.models import Observation, Evidence, EvidenceSource
-from eiguide.reason import observations_to_facts
-from eiguide.store import write_jsonl, read_jsonl
+from compli.models import Observation, Evidence, EvidenceSource
+from compli.reason import observations_to_facts
+from compli.store import write_jsonl, read_jsonl
 
 
 def test_observation_bool_values():

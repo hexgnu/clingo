@@ -18,7 +18,7 @@ uv sync
 
 Check your environment:
 ```bash
-uv run eiguide doctor
+uv run compli doctor
 ```
 
 ---
@@ -31,7 +31,7 @@ Try the tool with example data to see how it works.
 
 ```bash
 # 1. See what an inspection plan looks like
-uv run eiguide plan --site sites/den01.lp
+uv run compli plan --site sites/den01.lp
 
 # Output: 8 capture actions close 71 gaps across 9 requirements
 #   1. [video] Record continuous pass over bs1...
@@ -39,7 +39,7 @@ uv run eiguide plan --site sites/den01.lp
 #   ...
 
 # 2. Run an interactive inspection
-uv run eiguide inspect --site sites/den01.lp
+uv run compli inspect --site sites/den01.lp
 
 # You'll be prompted step-by-step through the inspection
 # Answer 'p' (pass) or 'f' (fail) for each observation
@@ -64,7 +64,7 @@ Verify compliance with your own engineering standard.
 
 **Option 1: Rule-based extraction** (fast, deterministic)
 ```bash
-uv run eiguide extract my-standard.pdf
+uv run compli extract my-standard.pdf
 ```
 
 **Option 2: LLM extraction** (generates structured rules, needs API key)
@@ -72,7 +72,7 @@ uv run eiguide extract my-standard.pdf
 # Set API key in .env file first
 echo 'FIREWORKS_API_KEY=fw_your_key_here' > .env
 
-uv run eiguide extract-llm my-standard.pdf
+uv run compli extract-llm my-standard.pdf
 ```
 
 **Output**: Extracts clauses, figures, and tables → `data/clauses.jsonl`
@@ -81,7 +81,7 @@ uv run eiguide extract-llm my-standard.pdf
 
 If you used LLM extraction, review the generated rules:
 ```bash
-uv run eiguide review --rules-file data/rules.jsonl
+uv run compli review --rules-file data/rules.jsonl
 ```
 
 This shows each extracted rule alongside its source clause. Accept or reject each one.
@@ -91,7 +91,7 @@ If you used basic extraction, you'll need to create rules manually (see `data/` 
 #### Step 3: Compile rules to ASP
 
 ```bash
-uv run eiguide compile --chapter HVAC --rules-file data/rules.jsonl
+uv run compli compile --chapter HVAC --rules-file data/rules.jsonl
 ```
 
 Replace `HVAC` with your chapter identifier (e.g., D, POWER, SEC).
@@ -118,7 +118,7 @@ hvac_controller(hvac_ctrl_main).
 #### Step 5: Generate an inspection plan
 
 ```bash
-uv run eiguide plan --site sites/my-site.lp --chapter HVAC
+uv run compli plan --site sites/my-site.lp --chapter HVAC
 ```
 
 **Output**: Shows the optimal inspection plan
@@ -135,7 +135,7 @@ The plan is **read-only** - nothing is written to disk.
 #### Step 6: Run the inspection
 
 ```bash
-uv run eiguide inspect --site sites/my-site.lp --chapter HVAC
+uv run compli inspect --site sites/my-site.lp --chapter HVAC
 ```
 
 **Interactive walkthrough**:
@@ -198,10 +198,10 @@ cat > observations.jsonl <<EOF
 EOF
 
 # Run verification (exit code 0 = pass, 1 = fail/incomplete)
-uv run eiguide verify --site sites/my-site.lp --observations observations.jsonl --chapter HVAC
+uv run compli verify --site sites/my-site.lp --observations observations.jsonl --chapter HVAC
 
 # Optional: Write verdict as JSON
-uv run eiguide verify --site sites/my-site.lp --observations observations.jsonl --chapter HVAC --json-output verdict.json
+uv run compli verify --site sites/my-site.lp --observations observations.jsonl --chapter HVAC --json-output verdict.json
 ```
 
 Exit codes:
@@ -217,10 +217,10 @@ This tool also solves the **inverse problem**: given symptoms, what broke?
 
 ```bash
 # Interactive ticket diagnosis
-uv run eiguide work tickets/den_demo.json
+uv run compli work tickets/den_demo.json
 
 # One-shot diagnosis
-uv run eiguide triage tickets/den_demo.json
+uv run compli triage tickets/den_demo.json
 ```
 
 See main README.md for the full diagnosis walkthrough.
@@ -242,20 +242,20 @@ ASP fails silently on typos. Common mistakes:
 
 ✅ **Right**: `hvac_controller(c1).`
 
-Run `eiguide doctor` to check your environment.
+Run `compli doctor` to check your environment.
 
 ### "No rules found for chapter X"
 
 You need to compile rules first:
 ```bash
-uv run eiguide compile --chapter X --rules-file data/rules.jsonl
+uv run compli compile --chapter X --rules-file data/rules.jsonl
 ```
 
 ### "Clauses file not found"
 
 You need to extract from PDF first:
 ```bash
-uv run eiguide extract your-pdf.pdf
+uv run compli extract your-pdf.pdf
 ```
 
 ### "No API key found" (when using extract-llm)
@@ -267,7 +267,7 @@ echo 'FIREWORKS_API_KEY=fw_your_key_here' > .env
 
 Or use basic extraction (no API key needed):
 ```bash
-uv run eiguide extract your-pdf.pdf
+uv run compli extract your-pdf.pdf
 ```
 
 ---
@@ -284,7 +284,7 @@ uv run eiguide extract your-pdf.pdf
 **Advanced usage**:
 - Custom rules: `data/` for examples
 - Site file predicates: `ontology/domain.lp`
-- Test the solver: `uv run eiguide prove`
+- Test the solver: `uv run compli prove`
 
 ---
 
@@ -292,32 +292,32 @@ uv run eiguide extract your-pdf.pdf
 
 ```bash
 # Environment check
-uv run eiguide doctor
+uv run compli doctor
 
 # Extract from PDF
-uv run eiguide extract <pdf>              # Rule-based
-uv run eiguide extract-llm <pdf>          # LLM-based (needs API key)
+uv run compli extract <pdf>              # Rule-based
+uv run compli extract-llm <pdf>          # LLM-based (needs API key)
 
 # Review LLM-extracted rules
-uv run eiguide review --rules-file data/rules.jsonl
+uv run compli review --rules-file data/rules.jsonl
 
 # Compile to ASP
-uv run eiguide compile --chapter X --rules-file data/rules.jsonl
+uv run compli compile --chapter X --rules-file data/rules.jsonl
 
 # Plan inspection
-uv run eiguide plan --site sites/my.lp --chapter X
+uv run compli plan --site sites/my.lp --chapter X
 
 # Run inspection
-uv run eiguide inspect --site sites/my.lp --chapter X
+uv run compli inspect --site sites/my.lp --chapter X
 
 # Batch verification
-uv run eiguide verify --site sites/my.lp --observations obs.jsonl --chapter X
+uv run compli verify --site sites/my.lp --observations obs.jsonl --chapter X
 
 # Test solver claims
-uv run eiguide prove
+uv run compli prove
 
 # Diagnose ticket
-uv run eiguide work tickets/demo.json
+uv run compli work tickets/demo.json
 ```
 
 ---

@@ -11,8 +11,8 @@ import re
 import pymupdf
 import pytest
 
-from eiguide import layout
-from eiguide.extract import classify_modality
+from compli import layout
+from compli.extract import classify_modality
 from tests.conftest import PDF
 
 EXPECTED_CHAPTERS = set("ABCDEFGHIJK")

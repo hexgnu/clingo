@@ -1,8 +1,8 @@
 """Test observation validation against known rules."""
 
 import pytest
-from eiguide.models import Observation, Rule, Observable, Modality
-from eiguide.validate_obs import validate_observations
+from compli.models import Observation, Rule, Observable, Modality
+from compli.validate_obs import validate_observations
 
 
 def test_valid_observations_pass():

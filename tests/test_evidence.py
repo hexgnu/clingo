@@ -2,7 +2,7 @@
 
 import time
 import pytest
-from eiguide.models import Evidence, EvidenceSource, Observation
+from compli.models import Evidence, EvidenceSource, Observation
 
 
 def test_evidence_source_model():
@@ -203,7 +203,7 @@ def test_evidence_with_incident_correlation():
 
 def test_multiple_observations_to_facts():
     """Multiple observations generate sequential evidence IDs and timestamps."""
-    from eiguide.reason import observations_to_facts
+    from compli.reason import observations_to_facts
 
     obs1 = Observation(subject="cell(bs1,1)", observable="legible", value=True)
     obs2 = Observation(subject="cell(bs1,2)", observable="legible", value=False)

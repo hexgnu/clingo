@@ -14,7 +14,7 @@ This example demonstrates compliance verification for HVAC systems using the HVA
 
 ```bash
 cd ../..  # Back to repo root
-uv run eiguide compile --chapter HVAC --rules-file examples/hvac-compliance/rules.jsonl
+uv run compli compile --chapter HVAC --rules-file examples/hvac-compliance/rules.jsonl
 ```
 
 This generates `rules/chapter_hvac.lp`.
@@ -22,7 +22,7 @@ This generates `rules/chapter_hvac.lp`.
 ### 2. Generate inspection plan
 
 ```bash
-uv run eiguide plan --site examples/hvac-compliance/sites/datacenter01.lp --chapter HVAC
+uv run compli plan --site examples/hvac-compliance/sites/datacenter01.lp --chapter HVAC
 ```
 
 You'll see the optimal plan for collecting evidence.
@@ -30,7 +30,7 @@ You'll see the optimal plan for collecting evidence.
 ### 3. Run interactive inspection
 
 ```bash
-uv run eiguide inspect --site examples/hvac-compliance/sites/datacenter01.lp --chapter HVAC
+uv run compli inspect --site examples/hvac-compliance/sites/datacenter01.lp --chapter HVAC
 ```
 
 Answer the prompts to verify each requirement.

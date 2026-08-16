@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from eiguide import prove
+from compli import prove
 
 ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "sites" / "den01.lp"

@@ -14,8 +14,8 @@ from rich.table import Table
 from rich import box
 import sys
 
-from eiguide.ticket import Ticket
-from eiguide.triage import solve, to_result, evidence_facts
+from compli.ticket import Ticket
+from compli.triage import solve, to_result, evidence_facts
 
 console = Console()
 

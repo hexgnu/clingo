@@ -4,7 +4,7 @@
 
 All persistent Pydantic models (`Clause`, `Rule`) include a `schema_version` field to track compatibility.
 
-**Current Version:** 1 (defined in `src/eiguide/models.py::SCHEMA_VERSION`)
+**Current Version:** 1 (defined in `src/compli/models.py::SCHEMA_VERSION`)
 
 ## When to Increment Version
 
@@ -36,7 +36,7 @@ cp data/rules.jsonl data/rules.jsonl.backup
 ### 2. Update Schema Version
 
 ```python
-# src/eiguide/models.py
+# src/compli/models.py
 SCHEMA_VERSION = 2  # Increment from 1
 
 class Rule(BaseModel):
@@ -47,9 +47,9 @@ class Rule(BaseModel):
 ### 3. Write Migration Function
 
 ```python
-# src/eiguide/migrate.py (create if needed)
-from eiguide.models import Rule, SCHEMA_VERSION
-from eiguide.store import read_jsonl, write_jsonl
+# src/compli/migrate.py (create if needed)
+from compli.models import Rule, SCHEMA_VERSION
+from compli.store import read_jsonl, write_jsonl
 
 def migrate_rules_v1_to_v2(old_path, new_path):
     """Migrate rules from schema version 1 to 2."""
@@ -69,7 +69,7 @@ def migrate_rules_v1_to_v2(old_path, new_path):
 
 ```bash
 # Test on backup data
-uv run python -c "from eiguide.migrate import migrate_rules_v1_to_v2; \
+uv run python -c "from compli.migrate import migrate_rules_v1_to_v2; \
                   migrate_rules_v1_to_v2('data/rules.jsonl.backup', 'data/rules.jsonl.migrated')"
 
 # Verify migrated data
