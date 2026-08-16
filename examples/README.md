@@ -1,33 +1,34 @@
 # Examples
 
-Complete working examples demonstrating compliance verification and fault diagnosis.
+Two example workflows showing ASP-based reasoning.
 
-## Available Examples
+## [compliance/](compliance/)
 
-### [hvac-compliance/](hvac-compliance/)
+**Problem:** "What must be TRUE?"  
+**Domain:** Battery site compliance inspection  
+**Input:** Engineering standard PDF  
+**Output:** Evidence collection plan
 
-HVAC system compliance verification using HVAC CITS 115 standard.
-
-- **What it shows**: LLM rule extraction, compilation, planning, inspection
-- **Time to run**: 5 minutes
-- **Complexity**: Beginner-friendly
-
-**Quick start**:
 ```bash
-cd hvac-compliance
-# See hvac-compliance/README.md for instructions
+uv run compli plan --site examples/compliance/den01.lp
 ```
 
-## Coming Soon
+## [diagnosis/](diagnosis/)
 
-- `minimal-compliance/` - Simplest possible example (3 rules, hand-written)
-- `diagnosis-demo/` - Fault diagnosis walkthrough
+**Problem:** "What WENT WRONG?"  
+**Domain:** Datacenter fault diagnosis  
+**Input:** Alarm symptoms from outage  
+**Output:** Test plan to confirm root cause
 
-## Structure
+```bash
+cd examples/diagnosis && uv run python run.py
+```
 
-Each example contains:
-- `README.md` - How to run it
-- `docs/` - Source PDFs or standards
-- `rules.jsonl` - Extracted/hand-written rules
-- `sites/` - Example site files
-- Expected outputs and explanations
+## [hvac-compliance/](hvac-compliance/)
+
+**Domain:** HVAC system compliance  
+Smaller example showing PDF extraction → rules → inspection.
+
+---
+
+Both use the same three-valued logic (satisfied/violated/undetermined or established/refuted/uncertain) and the same optimization approach (minimize test cost to settle unknowns).

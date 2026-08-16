@@ -2,7 +2,7 @@
 
 Answer Set Programming (clingo) solving **forward** and **inverse** reasoning under partial observation.
 
-**→ New here? Start with the [5-minute quickstart](docs/quickstart.md)**
+**→ New here? Try `uv run compli quickstart` or see [examples/](examples/)**
 
 ---
 
@@ -39,7 +39,7 @@ problem. `clingo`'s `#minimize` solves it.
 **Question:** What broke, and what's the cheapest way to confirm?
 
 ```bash
-uv run python demo_diagnosis.py   # Saturday 3AM oncall scenario
+cd examples/diagnosis && uv run python run.py   # Saturday 3AM oncall scenario
 ```
 
 A fault under partial observation has **three** states:
@@ -67,7 +67,7 @@ Both problems need three capabilities **only ASP provides**:
 | **Enumerate all minimal solutions** | ❌ picks one | ❌ derives all | ✅ answer sets |
 | **Optimize over solutions** | ❌ | ❌ | ✅ #minimize |
 
-See [WHY_ASP.md](WHY_ASP.md) for the full explanation.
+**Why ASP?** Rule engines pick one answer. Datalog assumes unknown = false. Only ASP keeps the three-valued distinction and enumerates all minimal solutions.
 
 ## The Mirror Structure
 
@@ -101,14 +101,12 @@ Field technician gets a ticket: NODE-UNREACH alarm, one device down. The system 
 possible causes and asks cheapest tests to discriminate:
 
 ```bash
-uv run compli work tickets/den_demo.json
+uv run compli triage --ticket examples/diagnosis/den_demo.json
 ```
 
 Watch it narrow the hypothesis space with each test result. The solver eliminates incompatible
 explanations after each round until either one is confirmed or it reaches an impasse (requires
 truck roll or more knowledge).
-
-See [WHY_ASP.md](WHY_ASP.md) for why this requires ASP.
 
 `plan` and `inspect` are both **read-only**. An inspection is one session start to finish:
 answers live in memory, the verdict prints at the end, nothing is written. A half-finished
@@ -302,9 +300,10 @@ src/compli/
 ontology/
   core.lp       three-valued verdict, gaps, the #minimize plan
   domain.lp     site vocabulary + the three tiers of capture action
-rules/          generated
-sites/den01.lp  example site facts
-data/golden/    hand-authored, reviewed rules for Chapter D §6
+rules/            generated from compile
+examples/
+  compliance/     battery site examples, rules, site topology
+  diagnosis/      ticket triage examples, fault knowledge
 ```
 
 ## Tests

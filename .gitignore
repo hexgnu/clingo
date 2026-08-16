@@ -9,3 +9,5 @@ data/tables.jsonl
 rules/*.lp
 baml_client/
 .env
+baml_client/
+.compli_checkpoint.jsonl

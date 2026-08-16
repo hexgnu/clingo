@@ -28,9 +28,12 @@ def workspace(tmp_path_factory, chapter_d_program):
     ws = tmp_path_factory.mktemp("ws")
     (ws / "data").mkdir()
     (ws / "rules").mkdir()
+    (ws / "sites").mkdir()
     shutil.copytree(ROOT / "ontology", ws / "ontology")
-    shutil.copytree(ROOT / "sites", ws / "sites")
-    shutil.copy(ROOT / "data" / "golden" / "chapter_d6.jsonl", ws / "data" / "rules.jsonl")
+    # Copy just the .lp site files
+    for site_file in (ROOT / "examples" / "compliance").glob("*.lp"):
+        shutil.copy(site_file, ws / "sites" / site_file.name)
+    shutil.copy(ROOT / "examples" / "compliance" / "chapter_d6.jsonl", ws / "data" / "rules.jsonl")
     shutil.copy(chapter_d_program, ws / "rules" / "chapter_d.lp")
     return ws
 
@@ -78,12 +81,12 @@ class TestPlan:
 
     def test_out_flag_writes_the_manifest(self, with_clauses, tmp_path):
         target = tmp_path / "m.json"
-        result = invoke(with_clauses, ["plan", "--site", "sites/den01.lp", "--out", str(target)])
+        result = invoke(with_clauses, ["plan", "--site", "examples/compliance/den01.lp", "--out", str(target)])
         assert result.exit_code == 0, result.output
         assert target.exists()
 
     def test_missing_chapter_fails_with_guidance(self, with_clauses):
-        result = invoke(with_clauses, ["plan", "--site", "sites/den01.lp", "--chapter", "Z"])
+        result = invoke(with_clauses, ["plan", "--site", "examples/compliance/den01.lp", "--chapter", "Z"])
         assert result.exit_code != 0
         assert "compile" in result.output
 
@@ -93,7 +96,7 @@ class TestInspect:
 
     def test_passing_everything_reaches_compliance(self, with_clauses):
         # 8 actions; answering "p" to every prompt and accepting every default.
-        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="p\n" * 60)
+        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="p\n" * 60)
         assert result.exit_code == 0, result.output
         assert "0 violated" in result.output
         # The two documentary obligations can never be closed by capture.
@@ -112,7 +115,7 @@ class TestInspect:
             "p\n"  # 3. polarity fine
             + "p\n" * 40  # remaining actions
         )
-        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin=script)
+        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin=script)
         assert result.exit_code == 0, result.output
         assert "2 violated" in result.output
         assert "cell(bs1,7)" in result.output
@@ -120,13 +123,13 @@ class TestInspect:
 
     def test_skipping_leaves_the_requirement_open(self, with_clauses):
         """A skipped check must never read as a pass."""
-        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="s\n" * 60)
+        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="s\n" * 60)
         assert result.exit_code == 0, result.output
         assert "0 satisfied" in result.output
         assert "0 violated" in result.output
 
     def test_quitting_early_stops_and_says_so(self, with_clauses):
-        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="q\n")
+        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="q\n")
         assert result.exit_code == 0, result.output
         assert "Stopped" in result.output
         assert "undetermined" in result.output
@@ -137,27 +140,27 @@ class TestInspect:
         Both are worse than asking again, so the prompt must loop.
         """
         result = invoke(
-            with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="xyzzy\np\n" + "p\n" * 60
+            with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="xyzzy\np\n" + "p\n" * 60
         )
         assert "answer p, f, s or q" in result.output
         assert result.exit_code == 0, result.output
 
     def test_nothing_is_written_to_disk(self, with_clauses):
         before = sorted(p.name for p in (with_clauses / "data").iterdir())
-        invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="p\n" * 60)
+        invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="p\n" * 60)
         after = sorted(p.name for p in (with_clauses / "data").iterdir())
         assert before == after, "inspect is single-shot but left state behind"
 
     def test_a_clause_is_quoted_once_not_per_rule(self, with_clauses):
         """D.6.6 backs three rules; quoting it in full three times drowns the instruction."""
-        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="q\n" * 3)
+        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="q\n" * 3)
         quoted = result.output.count("Designate all batteries with black ink to indicate")
         assert quoted <= 1, f"clause quoted {quoted} times"
 
     def test_detail_lists_every_subject(self, with_clauses):
-        rolled = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="p\n" * 60)
+        rolled = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="p\n" * 60)
         detailed = invoke(
-            with_clauses, ["inspect", "--site", "sites/den01.lp", "--detail"], stdin="p\n" * 60
+            with_clauses, ["inspect", "--site", "examples/compliance/den01.lp", "--detail"], stdin="p\n" * 60
         )
         assert detailed.output.count("cell(bs1,") > rolled.output.count("cell(bs1,")
 
