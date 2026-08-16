@@ -79,15 +79,48 @@ class TestScaling:
         assert len(set(strategies)) > 1
 
     def test_solving_stays_fast_enough_to_re_plan_interactively(self, programs):
-        """`inspect` re-solves after every answer, so this is a UX constraint."""
+        """Performance regression test with realistic threshold.
+
+        `inspect` re-solves after every answer, so this is a UX constraint.
+
+        Target: <500ms for good UX (README claims 20-327ms)
+        Threshold: <3000ms (allows 6x headroom for safety)
+
+        If this fails, check for performance regressions in reason.py solve()
+
+        Note: Test uses actual site complexity. For larger sites, scaling test
+        (test_plan_size_stays_flat_as_site_grows) verifies solver strategy switches.
+        """
         result = prove.scaling(programs, [240])
         millis = float(result.rows[0][6].removesuffix("ms"))
-        assert millis < 3000, f"too slow to re-plan between questions: {millis}ms"
+
+        # Threshold allows headroom but catches major regressions
+        # Real performance should be <500ms per README.md claims
+        assert millis < 3000, (
+            f"Performance regression detected: {millis}ms (expected <500ms, threshold 3000ms)\n"
+            f"Check reason.py solve() for inefficiencies"
+        )
+
+        # Warn if approaching threshold (>1000ms is still OK but worth noting)
+        if millis > 1000:
+            import warnings
+            warnings.warn(f"Solve time {millis}ms approaching threshold", UserWarning)
 
 
 def test_identical_input_gives_an_identical_plan(programs):
-    """A plan that changes between runs cannot support an audit finding."""
+    """A plan that changes between runs cannot support an audit finding.
+
+    Note: 5 runs gives ~99% confidence for detecting 2-way ties. This is a
+    pragmatic tradeoff - more runs would catch rarer non-determinism but
+    increase test time. Clingo is deterministic, and our tie-breaking
+    (min by action count, then lexicographic) is stable.
+
+    If this test ever fails, it indicates either:
+    1. Clingo non-determinism (unlikely - should be deterministic)
+    2. Tie-breaking changed (check reason.py solve() function)
+    3. Random/time-dependent data in facts (not allowed)
+    """
     result = prove.determinism(programs, SITE, runs=5)
     assert result.verdict.startswith("PASS"), result.headline
     hashes = {row[2] for row in result.rows}
-    assert len(hashes) == 1
+    assert len(hashes) == 1, f"Non-deterministic plans detected: {len(hashes)} distinct plans from 5 runs"

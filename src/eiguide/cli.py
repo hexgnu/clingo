@@ -20,6 +20,12 @@ obvious next step, but nothing downstream depends on how it was produced.
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
+# Load .env file if present
+load_dotenv()
+
+import importlib.metadata
 import json
 from pathlib import Path
 from typing import Annotated
@@ -42,6 +48,32 @@ from .ticket import Ticket
 app = typer.Typer(add_completion=False, help="Compliance reasoning over installation standards.")
 console = Console()
 
+
+def version_callback(value: bool):
+    """Display version and exit."""
+    if value:
+        try:
+            version = importlib.metadata.version("eiguide")
+        except importlib.metadata.PackageNotFoundError:
+            version = "dev"
+        console.print(f"eiguide version {version}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main_callback(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=version_callback,
+            help="Show version and exit",
+        ),
+    ] = False,
+):
+    """Compliance reasoning over installation standards."""
+    pass
+
 ROOT = Path.cwd()
 DATA = ROOT / "data"
 RULES_DIR = ROOT / "rules"
@@ -51,7 +83,33 @@ STATUS_STYLE = {"violated": "bold red", "undetermined": "yellow", "satisfied": "
 
 
 def _load_clauses(path: Path) -> dict[str, Clause]:
-    return {c.id: c for c in read_jsonl(path, Clause)}
+    clauses = read_jsonl(path, Clause)
+
+    # Warn if file is missing or empty (read_jsonl returns [] for missing files)
+    if not clauses:
+        if not path.exists():
+            console.print(
+                f"[red]Error: Clauses file not found[/red]\n"
+                f"  Expected: {path}\n"
+                f"\n"
+                f"[cyan]→ Fix:[/cyan] Extract clauses from your PDF:\n"
+                f"    eiguide extract <your-pdf.pdf>\n"
+                f"\n"
+                f"[dim]Or with LLM (faster, needs API key):[/dim]\n"
+                f"    eiguide extract-llm <your-pdf.pdf>\n"
+                f"\n"
+                f"[dim]Don't have a PDF? See examples/ for sample datasets[/dim]"
+            )
+        else:
+            console.print(
+                f"[yellow]Warning: Clauses file is empty: {path}[/yellow]\n"
+                f"The file exists but contains no clauses.\n"
+                f"\n"
+                f"[cyan]→ Fix:[/cyan] Re-run extraction:\n"
+                f"    eiguide extract <your-pdf.pdf>"
+            )
+
+    return {c.id: c for c in clauses}
 
 
 def _short(subject: str) -> str:
@@ -69,19 +127,231 @@ def _clause_for_rule(clauses: dict[str, Clause], rules: list[Rule]) -> dict[str,
     return {r.id: clauses[r.clause_id] for r in rules if r.clause_id in clauses}
 
 
-def _load_rules(rules_file: Path, chapters: list[str]) -> list[Rule]:
+def _load_rules(rules_file: Path, chapters: list[str], validate_citations: bool = False) -> list[Rule]:
+    all_rules = read_jsonl(rules_file, Rule)
+
+    # Warn if file is missing or empty
+    if not all_rules:
+        if not rules_file.exists():
+            console.print(
+                f"[red]Error: Rules file not found[/red]\n"
+                f"  Expected: {rules_file}\n"
+                f"\n"
+                f"[cyan]→ Fix:[/cyan] Compile your rules:\n"
+                f"    eiguide compile --chapter {' '.join(chapters)} --rules-file {rules_file}\n"
+                f"\n"
+                f"[dim]Or extract rules from PDF with LLM:[/dim]\n"
+                f"    eiguide extract-llm <your-pdf.pdf> --out {rules_file}"
+            )
+        else:
+            console.print(
+                f"[yellow]Warning: Rules file is empty: {rules_file}[/yellow]\n"
+                f"\n"
+                f"[cyan]→ Fix:[/cyan] Extract rules from PDF:\n"
+                f"    eiguide extract-llm <your-pdf.pdf> --out {rules_file}"
+            )
+
     wanted = tuple(f"{c}." for c in chapters)
-    return [r for r in read_jsonl(rules_file, Rule) if r.clause_id.startswith(wanted)]
+    filtered = [r for r in all_rules if r.clause_id.startswith(wanted)]
+
+    if not filtered and all_rules:
+        available = {r.clause_id[0] for r in all_rules if r.clause_id}
+        console.print(
+            f"[yellow]No rules found for chapter(s): {', '.join(chapters)}[/yellow]\n"
+            f"Available chapters in {rules_file.name}: {', '.join(sorted(available))}\n"
+            f"\n"
+            f"[cyan]→ Fix:[/cyan] Use an available chapter:\n"
+            f"    eiguide plan --chapter {','.join(sorted(available))} --site <site-file>"
+        )
+
+    # Optional: Validate citation_spans when loading for plan/inspect
+    if validate_citations and filtered:
+        # Load clauses to validate against
+        clauses_file = rules_file.parent / "clauses.jsonl"
+        if clauses_file.exists():
+            clauses_dict = _load_clauses(clauses_file)
+            invalid_citations = []
+
+            for rule in filtered:
+                clause = clauses_dict.get(rule.clause_id)
+                if clause and rule.citation_span:
+                    # Normalize both for comparison (remove degree symbols, extra quotes)
+                    normalized_clause = clause.text.replace("°", "").replace('"', '').replace("'", "")
+                    normalized_citation = rule.citation_span.replace("°", "").replace('"', '').replace("'", "")
+
+                    if normalized_citation not in normalized_clause:
+                        invalid_citations.append(f"{rule.id}: citation not found in clause {rule.clause_id}")
+
+            if invalid_citations:
+                console.print(f"[yellow]Warning: {len(invalid_citations)} rule(s) have invalid citation_spans[/yellow]")
+                for msg in invalid_citations[:5]:  # Show first 5
+                    console.print(f"  [dim]{msg}[/dim]")
+                if len(invalid_citations) > 5:
+                    console.print(f"  [dim]... and {len(invalid_citations) - 5} more[/dim]")
+
+    return filtered
+
+
+@app.command()
+def doctor() -> None:
+    """Check environment and report what's working and what needs fixing."""
+    from rich.table import Table
+    import subprocess
+    import os
+
+    console.print("\n[bold]Environment Health Check[/bold]\n")
+
+    checks = []
+
+    # Check Python version
+    import sys
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ok = sys.version_info >= (3, 12)
+    checks.append(("Python 3.12+", py_version, "✓" if py_ok else "✗", "" if py_ok else "Upgrade to Python 3.12+"))
+
+    # Check uv
+    try:
+        result = subprocess.run(["uv", "--version"], capture_output=True, text=True, timeout=5)
+        uv_version = result.stdout.strip()
+        uv_ok = result.returncode == 0
+        checks.append(("uv", uv_version, "✓" if uv_ok else "✗", "" if uv_ok else "Install uv: pip install uv"))
+    except Exception:
+        checks.append(("uv", "not found", "✗", "Install uv: pip install uv"))
+
+    # Check clingo
+    try:
+        import clingo
+        clingo_ok = True
+        checks.append(("clingo (Python)", clingo.__version__, "✓", ""))
+    except ImportError:
+        checks.append(("clingo", "not found", "✗", "Run: uv sync"))
+
+    # Check BAML client
+    baml_client = Path("baml_client")
+    if baml_client.exists():
+        checks.append(("BAML client", str(baml_client), "✓", ""))
+    else:
+        checks.append(("BAML client", "not found", "✗", "Run: cd baml_src && baml-cli generate"))
+
+    # Check API keys
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    fireworks_key = os.getenv("FIREWORKS_API_KEY")
+
+    if anthropic_key:
+        masked = anthropic_key[:8] + "..." if len(anthropic_key) > 8 else "set"
+        checks.append(("ANTHROPIC_API_KEY", masked, "✓", ""))
+    else:
+        checks.append(("ANTHROPIC_API_KEY", "not set", "○", "Optional: for Claude LLM extraction"))
+
+    if fireworks_key:
+        masked = fireworks_key[:8] + "..." if len(fireworks_key) > 8 else "set"
+        checks.append(("FIREWORKS_API_KEY", masked, "✓", ""))
+    else:
+        checks.append(("FIREWORKS_API_KEY", "not set", "○", "Optional: for Fireworks LLM extraction"))
+
+    # Check key directories/files
+    ontology_dir = ROOT / "ontology"
+    if ontology_dir.exists() and (ontology_dir / "core.lp").exists():
+        checks.append(("ontology/", str(ontology_dir), "✓", ""))
+    else:
+        checks.append(("ontology/", "missing", "✗", "Clone full repository"))
+
+    data_dir = ROOT / "data"
+    if data_dir.exists():
+        checks.append(("data/", str(data_dir), "✓", ""))
+    else:
+        checks.append(("data/", "missing", "!", "Will be created on first extraction"))
+
+    # Display results
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Check", style="cyan")
+    table.add_column("Value", style="dim")
+    table.add_column("Status", justify="center")
+    table.add_column("Action", style="yellow")
+
+    for check, value, status, action in checks:
+        style = "green" if status == "✓" else "red" if status == "✗" else "yellow"
+        table.add_row(check, value, f"[{style}]{status}[/{style}]", action)
+
+    console.print(table)
+
+    # Overall status
+    errors = sum(1 for _, _, status, _ in checks if status == "✗")
+    warnings = sum(1 for _, _, status, _ in checks if status == "!")
+
+    if errors == 0 and warnings == 0:
+        console.print("\n[bold green]✓ Environment is healthy![/bold green]")
+        console.print("[dim]Try: eiguide plan --site sites/den01.lp[/dim]\n")
+    elif errors == 0:
+        console.print(f"\n[bold yellow]⚠ {warnings} warning(s) - environment mostly healthy[/bold yellow]\n")
+    else:
+        console.print(f"\n[bold red]✗ {errors} error(s) need fixing[/bold red]\n")
+        raise typer.Exit(1)
 
 
 @app.command()
 def extract(
     pdf: Annotated[Path, typer.Argument(help="Source PDF.")] = Path("EIGuide-61[1].pdf"),
-    out: Annotated[Path, typer.Option(help="Where to write clauses.")] = DATA / "clauses.jsonl",
-    doc: str = "EIGuide",
-    version: str = "6.0",
+    out: Annotated[Path, typer.Option(help="Where to write output.")] = DATA / "clauses.jsonl",
+    doc: Annotated[str, typer.Option(help="Document name.")] = "EIGuide",
+    version: Annotated[str, typer.Option(help="Document version.")] = "6.0",
+    llm: Annotated[bool, typer.Option(help="Use LLM extraction (generates structured rules, needs API key).")] = False,
+    client: Annotated[str, typer.Option(help="LLM client: 'Claude' or 'Fireworks'.")] = "Fireworks",
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose logging.")] = False,
 ) -> None:
-    """Recover clauses, figures and tables from the PDF."""
+    """Extract clauses (or rules with --llm) from PDF.
+
+    Without --llm: Rule-based extraction (fast, deterministic) → clauses.jsonl
+    With --llm: LLM extraction (generates structured rules) → rules.jsonl
+    """
+    if llm:
+        # Redirect to LLM extraction
+        from loguru import logger
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+        from . import llm_extract
+
+        # Auto-change output to rules.jsonl if still default
+        if out == DATA / "clauses.jsonl":
+            out = DATA / "rules.jsonl"
+
+        # Configure loguru
+        logger.remove()
+        if verbose:
+            logger.add(
+                lambda msg: console.print(f"[dim]{msg}[/dim]", end=""),
+                format="{time:HH:mm:ss} | {level: <8} | {message}\n",
+                level="DEBUG",
+            )
+        else:
+            logger.add(
+                lambda msg: console.print(f"[cyan]{msg}[/cyan]", end=""),
+                format="{message}\n",
+                level="INFO",
+            )
+
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+                transient=False,
+            ) as progress:
+                task = progress.add_task(
+                    f"Extracting rules from {pdf.name} using {client}...",
+                    total=None
+                )
+                n = llm_extract.extract_to_jsonl(pdf, out, doc_name=doc, client=client)
+                progress.update(task, description=f"✓ Extracted {n} rules", completed=True)
+
+            console.print(f"\n[green]✓ Extracted {n} rules[/green] -> {out}")
+            console.print(f"[yellow]Review with:[/yellow] eiguide review --rules-file {out}")
+        except Exception as e:
+            logger.exception("Extraction failed")
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
+        return
+
+    # Original rule-based extraction
     clauses, figures, tables, warnings = run_extract(pdf, doc_name=doc, doc_version=version)
     for warning in warnings:
         console.print(f"[yellow]source document:[/yellow] {warning}")
@@ -106,6 +376,62 @@ def extract(
         table.add_row(ch, title, str(by_chapter[ch]), str(binding))
     console.print(table)
     console.print(f"figures: {len(figures)}  tables: {len(tables)}  -> {out}")
+
+
+@app.command()
+def extract_llm(
+    pdf: Annotated[Path, typer.Argument(help="Source PDF to extract rules from.")],
+    out: Annotated[Path, typer.Option(help="Where to write rules.")] = DATA / "rules.jsonl",
+    doc: Annotated[str, typer.Option(help="Document name.")] = "Compliance Standard",
+    client: Annotated[str, typer.Option(help="LLM client: 'Claude' or 'Fireworks'.")] = "Fireworks",
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose logging.")] = False,
+) -> None:
+    """Extract structured rules from PDF using LLM (BAML + Claude/Fireworks).
+
+    This command uses LLM to interpret PDF content and generate structured Rule objects.
+    The output still requires human review via `eiguide review` before compilation.
+
+    Requires: ANTHROPIC_API_KEY or FIREWORKS_API_KEY environment variable.
+    """
+    from loguru import logger
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from . import llm_extract
+
+    # Configure loguru
+    logger.remove()  # Remove default handler
+    if verbose:
+        logger.add(
+            lambda msg: console.print(f"[dim]{msg}[/dim]", end=""),
+            format="{time:HH:mm:ss} | {level: <8} | {message}\n",
+            level="DEBUG",
+        )
+    else:
+        logger.add(
+            lambda msg: console.print(f"[cyan]{msg}[/cyan]", end=""),
+            format="{message}\n",
+            level="INFO",
+        )
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=False,
+        ) as progress:
+            task = progress.add_task(
+                f"Extracting rules from {pdf.name} using {client}...",
+                total=None
+            )
+            n = llm_extract.extract_to_jsonl(pdf, out, doc_name=doc, client=client)
+            progress.update(task, description=f"✓ Extracted {n} rules", completed=True)
+
+        console.print(f"\n[green]✓ Extracted {n} rules[/green] -> {out}")
+        console.print(f"[yellow]Review with:[/yellow] eiguide review --rules-file {out}")
+    except Exception as e:
+        logger.exception("Extraction failed")
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -193,10 +519,23 @@ def _check_site(site: Path, programs: list[Path], strict: bool = True) -> None:
 
 def _programs(chapters: list[str]) -> list[Path]:
     files = [ONTOLOGY / "core.lp", ONTOLOGY / "domain.lp"]
+
+    # Check core ontology files exist
+    for core_file in files:
+        if not core_file.exists():
+            console.print(
+                f"[red]Core ontology file missing: {core_file}[/red]\n"
+                f"This is a required file that should be part of the repository."
+            )
+            raise typer.Exit(1)
+
     for ch in chapters:
         path = RULES_DIR / f"chapter_{ch.lower()}.lp"
         if not path.exists():
-            console.print(f"[red]missing {path}; run `eiguide compile --chapter {ch}` first[/red]")
+            console.print(
+                f"[red]Chapter ASP file missing: {path}[/red]\n"
+                f"Run [cyan]eiguide compile --chapter {ch}[/cyan] to compile rules into ASP"
+            )
             raise typer.Exit(1)
         files.append(path)
     return files
@@ -218,7 +557,7 @@ def plan(
     _check_site(site, programs, strict=strict)
     model = reason.solve(programs + [site], "")
 
-    rules = _load_rules(DATA / "rules.jsonl", chapter)
+    rules = _load_rules(DATA / "rules.jsonl", chapter, validate_citations=True)
     clauses = _clause_for_rule(_load_clauses(clauses_file), rules)
     site_name = site.stem
     manifest = reason.build_manifest(
@@ -259,6 +598,8 @@ def inspect(
     clauses_file: Annotated[Path, typer.Option()] = DATA / "clauses.jsonl",
     detail: Annotated[bool, typer.Option(help="List every subject in the verdict.")] = False,
     strict: Annotated[bool, typer.Option(help="Fail on site validation errors (recommended).")] = True,
+    resume: Annotated[Path | None, typer.Option(help="Resume from saved observations file.")] = None,
+    autosave: Annotated[bool, typer.Option(help="Auto-save observations after each action.")] = True,
 ) -> None:
     """Walk the site one action at a time, re-planning after each answer.
 
@@ -275,17 +616,41 @@ def inspect(
     programs = _programs(chapter)
     _check_site(site, programs, strict=strict)
     programs = programs + [site]
-    rules = _load_rules(DATA / "rules.jsonl", chapter)
+    rules = _load_rules(DATA / "rules.jsonl", chapter, validate_citations=True)
     clauses = _clause_for_rule(_load_clauses(clauses_file), rules)
     acceptance = reason.acceptance_index(rules)
     meta = {"doc": "EIGuide", "version": "6.0", "chapters": list(chapter)}
 
+    # Build index of known observables to validate against
+    known_observables = {obs.name for rule in rules for obs in rule.observables if rule.field_verifiable}
+
+    # Checkpoint/resume: load saved observations if resuming
     recorded: dict[tuple[str, str], Observation] = {}
+    checkpoint_file = site.parent / f".{site.stem}_checkpoint.jsonl"
+
+    if resume:
+        # Resume from explicitly provided file
+        if resume.exists():
+            saved_obs = read_jsonl(resume, Observation)
+            console.print(f"[cyan]Resuming from {resume}: {len(saved_obs)} observations loaded[/cyan]")
+            recorded = {(o.subject, o.observable): o for o in saved_obs}
+        else:
+            console.print(f"[yellow]Resume file not found: {resume}. Starting fresh.[/yellow]")
+    elif autosave and checkpoint_file.exists():
+        # Auto-resume from checkpoint file
+        saved_obs = read_jsonl(checkpoint_file, Observation)
+        console.print(f"[cyan]Found checkpoint: {len(saved_obs)} observations. Resume? [y/N][/cyan]")
+        if typer.prompt("", default="n").strip().lower() == "y":
+            recorded = {(o.subject, o.observable): o for o in saved_obs}
+            console.print(f"[green]Resumed from checkpoint[/green]")
+        else:
+            console.print("[yellow]Starting fresh (checkpoint file will be overwritten)[/yellow]")
+
     # Several rules can come from one clause (D.6.6 -> D.6.6a, D.6.6b), and a sweep and a
     # survey over the same subject cite it again. Quoting it in full every time drowns the
     # instruction, so each clause is shown once and referenced by number afterwards.
     quoted: set[str] = set()
-    step = 0
+    step = len(recorded)  # Start step count from number of resumed observations
     while True:
         model = reason.solve(programs, reason.observations_to_facts(list(recorded.values())))
         manifest = reason.build_manifest(model, site.stem, clauses, meta, acceptance)
@@ -374,14 +739,40 @@ def inspect(
                 ).strip()
                 if which.lower() != "all":
                     picked = {w.strip() for w in which.split(",") if w.strip()}
-                    matched = {s for s in subjects if s in picked or _short(s) in picked}
-                    if matched:
-                        failing = matched
+
+                    # Check for ambiguous short-form IDs
+                    short_to_subjects: dict[str, list[str]] = {}
+                    for s in subjects:
+                        short_to_subjects.setdefault(_short(s), []).append(s)
+
+                    # Detect collisions in picked inputs
+                    ambiguous = []
+                    for p in picked:
+                        if p in short_to_subjects and len(short_to_subjects[p]) > 1:
+                            ambiguous.append((p, short_to_subjects[p]))
+
+                    if ambiguous:
+                        console.print("     [yellow]Ambiguous input - multiple subjects match:[/yellow]")
+                        for short_id, matches in ambiguous:
+                            console.print(f"       '{short_id}' could mean:")
+                            for i, m in enumerate(matches, 1):
+                                console.print(f"         {i}) {m}")
+                        console.print("     [yellow]Use full subject names to disambiguate[/yellow]")
+                        console.print("     [yellow]Recording all as failed[/yellow]")
                     else:
-                        console.print("     [yellow]no subject matched; recording all as failed[/yellow]")
+                        matched = {s for s in subjects if s in picked or _short(s) in picked}
+                        if matched:
+                            failing = matched
+                        else:
+                            console.print("     [yellow]no subject matched; recording all as failed[/yellow]")
 
             # A failure is worth explaining; a pass is not, so only failures are asked
             # to justify themselves.
+            # Validate observable name against known rules
+            if obs not in known_observables:
+                console.print(f"     [yellow]Warning: '{obs}' not found in rules. Possible typo?[/yellow]")
+                console.print(f"     [dim]Known observables: {', '.join(sorted(known_observables)[:5])}...[/dim]")
+
             note = typer.prompt("     what was wrong?", default="") if not value else ""
             for subject in subjects:
                 failed_here = (not value) and subject in failing
@@ -400,6 +791,10 @@ def inspect(
             )
             break
 
+        # Auto-save checkpoint after each action
+        if autosave:
+            write_jsonl(checkpoint_file, list(recorded.values()))
+
         # Nothing recorded this round means every observable was skipped; asking the same
         # question forever helps nobody.
         if not any(o.action == action.id for o in recorded.values()):
@@ -407,6 +802,12 @@ def inspect(
             break
 
     console.print()
+
+    # Clean up checkpoint file on successful completion
+    if autosave and checkpoint_file.exists():
+        checkpoint_file.unlink()
+        console.print("[dim]Checkpoint cleared (inspection complete)[/dim]")
+
     model = reason.solve(programs, reason.observations_to_facts(list(recorded.values())))
     verdicts = reason.build_verdicts(model, clauses)
     if detail:
@@ -808,3 +1209,98 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+@app.command()
+def verify(
+    site: Annotated[Path, typer.Option(help="Site facts (.lp).")] = Path("sites/den01.lp"),
+    observations: Annotated[Path, typer.Option(help="Observations file (.jsonl).")] = Path("observations.jsonl"),
+    chapter: Annotated[list[str], typer.Option(help="Chapters in scope.")] = ["D"],
+    clauses_file: Annotated[Path, typer.Option()] = DATA / "clauses.jsonl",
+    strict: Annotated[bool, typer.Option(help="Fail on site validation errors (recommended).")] = True,
+    json_output: Annotated[Path | None, typer.Option(help="Write verdicts as JSON.")] = None,
+) -> None:
+    """Batch verification mode for CI/automation: load observations, run solver, report verdict.
+
+    Non-interactive. Exits with:
+      0 - all requirements satisfied
+      1 - violations found or undetermined requirements remain
+      2 - errors (missing files, invalid site, etc.)
+
+    Example:
+      eiguide verify --site sites/den01.lp --observations captured.jsonl
+    """
+    programs = _programs(chapter)
+    _check_site(site, programs, strict=strict)
+    programs = programs + [site]
+
+    # Load observations from file
+    if not observations.exists():
+        console.print(f"[red]Observations file not found: {observations}[/red]")
+        raise typer.Exit(2)
+
+    obs = read_jsonl(observations, Observation)
+    if not obs:
+        console.print(f"[yellow]Warning: No observations in {observations}[/yellow]")
+
+    console.print(f"Loaded {len(obs)} observations from {observations}")
+
+    # Load rules and clauses
+    rules = _load_rules(DATA / "rules.jsonl", chapter)
+    clauses = _clause_for_rule(_load_clauses(clauses_file), rules)
+
+    # Validate observations match known rules
+    from .validate_obs import validate_observations
+    problems = validate_observations(obs, rules, strict=False)
+    for problem in problems:
+        console.print(f"[yellow]Warning: {problem}[/yellow]")
+
+    # Run solver
+    console.print("Running solver...")
+    model = reason.solve(programs, reason.observations_to_facts(obs))
+    verdicts = reason.build_verdicts(model, clauses)
+
+    # Print results
+    _print_rollup(verdicts, clauses, site.stem, len(obs))
+    _print_totals(verdicts)
+
+    # Write JSON if requested
+    if json_output:
+        import json
+        output = {
+            "site": site.stem,
+            "observations": len(obs),
+            "verdicts": [
+                {
+                    "rule": v.rule,
+                    "subject": v.subject,
+                    "status": v.status,
+                    "missing": v.missing,
+                    "citation": {
+                        "page": v.citation.page_label,
+                        "text": v.citation.text
+                    } if v.citation else None
+                }
+                for v in verdicts
+            ],
+            "summary": {
+                "violated": sum(1 for v in verdicts if v.status == "violated"),
+                "undetermined": sum(1 for v in verdicts if v.status == "undetermined"),
+                "satisfied": sum(1 for v in verdicts if v.status == "satisfied"),
+            }
+        }
+        json_output.write_text(json.dumps(output, indent=2))
+        console.print(f"[dim]Wrote verdicts to {json_output}[/dim]")
+
+    # Exit code based on verdict
+    violated = sum(1 for v in verdicts if v.status == "violated")
+    undetermined = sum(1 for v in verdicts if v.status == "undetermined")
+
+    if violated > 0:
+        console.print(f"\n[bold red]FAIL: {violated} violations found[/bold red]")
+        raise typer.Exit(1)
+    elif undetermined > 0:
+        console.print(f"\n[yellow]INCOMPLETE: {undetermined} requirements unchecked[/yellow]")
+        raise typer.Exit(1)
+    else:
+        console.print("\n[bold green]PASS: All requirements satisfied[/bold green]")
+        raise typer.Exit(0)

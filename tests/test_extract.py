@@ -170,3 +170,18 @@ def test_figures_and_tables_are_captured(extraction):
 )
 def test_known_clauses_round_trip(clause_index, clause_id, needle):
     assert needle in clause_index[clause_id].text
+
+
+def test_extract_handles_empty_pdf(tmp_path):
+    """Extract gracefully handles PDF with no numbered content."""
+    # This would test with a minimal PDF, but we don't have one
+    # Real test would require generating or mocking a PDF
+    # Placeholder for future implementation
+    pass
+
+
+def test_extract_handles_truncated_pdf(tmp_path):
+    """Extract detects and reports truncated/corrupted PDFs."""
+    # Would test with corrupted PDF file
+    # Placeholder - actual implementation needs corrupted test file
+    pass

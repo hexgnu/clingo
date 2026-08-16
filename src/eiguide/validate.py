@@ -81,6 +81,30 @@ def pooled_atoms(text: str) -> list[str]:
     return out
 
 
+def _check_type_hints(text: str) -> list[str]:
+    """Heuristic type checks for common mistakes.
+
+    Not comprehensive - ASP is dynamically typed. This catches obvious errors like:
+    - Quoted numbers: cell(bs1, "7") instead of cell(bs1, 7)
+    - Mixed quotes: "value' or 'value"
+    """
+    problems = []
+
+    # Quoted integers (likely wrong)
+    if re.search(r'\(\s*[a-z_]+\s*,\s*"[0-9]+"\s*\)', text):
+        problems.append(
+            'Found quoted numbers like "7" - numbers should be unquoted: cell(bs1, 7) not cell(bs1, "7")'
+        )
+
+    # Mismatched quotes
+    if re.search(r'"[^"]*\'|\'[^\']*"', text):
+        problems.append(
+            "Found mismatched quotes - use consistent quoting style"
+        )
+
+    return problems
+
+
 def validate_site(site_file: Path, program_files: list[Path]) -> list[str]:
     """Report site facts that cannot possibly affect any verdict."""
     program: set[tuple[str, int]] = set()
@@ -89,6 +113,17 @@ def validate_site(site_file: Path, program_files: list[Path]) -> list[str]:
 
     site_text = site_file.read_text(encoding="utf-8")
     problems: list[str] = []
+
+    # Check for site() declaration - required for ASP program structure
+    site_sigs = signatures(site_text)
+    if ("site", 1) not in site_sigs:
+        problems.append(
+            "Missing required site(name) declaration. Every site file must start with "
+            "site(site_name). Example: site(den01)."
+        )
+
+    # Heuristic type checks
+    problems.extend(_check_type_hints(site_text))
 
     for atom in pooled_atoms(site_text):
         problems.append(

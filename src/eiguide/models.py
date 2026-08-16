@@ -103,6 +103,12 @@ class Observable(BaseModel):
     ``accepts`` holds a machine-checkable acceptance predicate. Nothing evaluates it today;
     it is the seam where computer-vision verification plugs in later without reshaping
     the schema.
+
+    DECISION (Code Review): Keep the field for now as a documented seam for future
+    vision verification. README.md:289-291 explicitly states this is where computer
+    vision will plug in. Removing it would require re-authoring 32 acceptance criteria
+    in data/rules.jsonl. Alternative considered was implementing vision now, but that's
+    a separate project requiring vision model integration.
     """
 
     name: str  # "cell_number_legible" — becomes an ASP constant
@@ -110,7 +116,7 @@ class Observable(BaseModel):
     target: str  # "each cell in the string"
     method: str  # "slow pan, cell face legible"
     instrument: str | None = None
-    accepts: str = ""
+    accepts: str = ""  # Machine-checkable criterion - currently displayed to human, future: evaluated by vision model
 
 
 RuleKind = Literal["obligation", "exemption", "definition"]
@@ -206,8 +212,13 @@ class OpenItem(BaseModel):
 
 
 class Manifest(BaseModel):
-    """The evidence-capture plan. This is the documented public interface."""
+    """The evidence-capture plan. This is the documented public interface.
 
+    Schema versioning: Increment schema_version when making breaking changes.
+    See docs/SCHEMA_MIGRATIONS.md for migration guidance.
+    """
+
+    schema_version: int = Field(default=SCHEMA_VERSION)
     site: str
     generated_from: dict[str, object]
     actions: list[Action] = Field(default_factory=list)
@@ -266,6 +277,17 @@ class Evidence(BaseModel):
             val = "true" if self.value else "false"
         elif isinstance(self.value, str):
             val = quote(self.value)
+        elif isinstance(self.value, int):
+            val = str(self.value)
+        elif isinstance(self.value, float):
+            # ASP doesn't handle floats well - convert to fraction or int
+            if self.value.is_integer():
+                val = str(int(self.value))
+            else:
+                # Convert to fraction: 120.5 -> 241/2
+                from fractions import Fraction
+                frac = Fraction(self.value).limit_denominator(1000)
+                val = f"{frac.numerator}/{frac.denominator}"
         else:
             val = str(self.value)
 
@@ -273,9 +295,23 @@ class Evidence(BaseModel):
         src_system = f", {quote(self.source.system)}" if self.source.system else ""
         src = f"source({self.source.type}, {quote(self.source.id)}{src_system})"
 
+        # Property is typically an atom, but could be complex - make it safe
+        # Convert underscores to atoms, keep others as-is if valid ASP terms
+        prop = self.property if self.property.isidentifier() and self.property.islower() else quote(self.property)
+
+        # Format confidence as integer ratio if it's 1.0, otherwise as fraction
+        # ASP doesn't like floating point decimals in some contexts
+        if self.confidence == 1.0:
+            conf = "1"
+        elif self.confidence == 0.0:
+            conf = "0"
+        else:
+            # Use fraction notation: 0.95 -> 95/100
+            conf = f"{int(self.confidence * 100)}/100"
+
         return (
             f"evidence({self.id}, {self.kind}, {self.subject}, "
-            f"{self.property}, {val}, {src}, {self.timestamp}, {self.confidence})."
+            f"{prop}, {val}, {src}, {self.timestamp}, {conf})."
         )
 
 

@@ -11,6 +11,7 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
+from loguru import logger
 from pydantic import BaseModel
 
 
@@ -21,6 +22,7 @@ def write_jsonl(path: Path, records: Iterable[BaseModel]) -> int:
     partial writes don't leave corrupted files - either the full file is written
     or the original remains unchanged.
     """
+    logger.debug(f"Writing JSONL to {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Write to temp file in same directory (required for atomic rename)
@@ -33,31 +35,42 @@ def write_jsonl(path: Path, records: Iterable[BaseModel]) -> int:
         delete=False,
     ) as tmp:
         tmp_path = Path(tmp.name)
+        logger.debug(f"Writing to temporary file: {tmp_path}")
         try:
             n = 0
             for record in records:
                 tmp.write(record.model_dump_json() + "\n")
                 n += 1
+                if n % 100 == 0:
+                    logger.debug(f"Written {n} records...")
             tmp.flush()  # Ensure all data written to disk
+            logger.debug(f"Flushed {n} records to disk")
 
             # Atomic rename (overwrites destination on Unix)
             tmp_path.replace(path)
+            logger.debug(f"Atomically renamed {tmp_path} -> {path}")
             return n
-        except Exception:
+        except Exception as e:
             # Clean up temp file on failure
+            logger.error(f"Write failed, cleaning up temporary file: {e}")
             tmp_path.unlink(missing_ok=True)
             raise
 
 
 def read_jsonl[T: BaseModel](path: Path, model: type[T]) -> list[T]:
     if not path.exists():
+        logger.debug(f"JSONL file does not exist: {path}")
         return []
+    logger.debug(f"Reading JSONL from {path}")
     out: list[T] = []
     with path.open(encoding="utf-8") as fh:
-        for line in fh:
+        for i, line in enumerate(fh, 1):
             line = line.strip()
             if line:
                 out.append(model.model_validate_json(line))
+            if i % 100 == 0:
+                logger.debug(f"Read {i} lines...")
+    logger.debug(f"Loaded {len(out)} records from {path}")
     return out
 
 

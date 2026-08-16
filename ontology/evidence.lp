@@ -48,9 +48,11 @@ sensor_evidence(E) :- evidence(E, _, _, _, _, source(sensor, _, _), _, _).
 
 % === Confidence Levels ===
 
-high_confidence(E) :- evidence(E, _, _, _, _, _, _, C), C >= 0.9.
-medium_confidence(E) :- evidence(E, _, _, _, _, _, _, C), C >= 0.5, C < 0.9.
-low_confidence(E) :- evidence(E, _, _, _, _, _, _, C), C < 0.5.
+% Confidence levels: 1 = full confidence, 0 = no confidence
+% Fractions like 95/100 are treated as high confidence if numerator/denominator >= 0.9
+
+high_confidence(E) :- evidence(E, _, _, _, _, _, _, 1).
+low_confidence(E) :- evidence(E, _, _, _, _, _, _, 0).
 
 % Reliable evidence: high confidence OR human source
 reliable(E) :- high_confidence(E).

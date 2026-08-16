@@ -67,7 +67,15 @@ def solve(program_files: list[Path], facts: str = "") -> Model:
     consecutive runs, which is indefensible for anything that produces an audit finding.
 
     So all optima are collected and one is chosen by a stable rule: fewest actions first,
-    then lexicographic order. Arbitrary, but *fixed*.
+    then lexicographic order by action name.
+
+    Note: Lexicographic ordering is arbitrary but deterministic. It makes the output
+    stable across runs (same input → same plan), but ties could break differently if
+    action names change. This is acceptable because:
+    1. Action names rarely change (defined in ontology/domain.lp)
+    2. All tied plans have identical cost
+    3. Determinism is more valuable than "optimal" tie-breaking
+    4. Test test_identical_input_gives_an_identical_plan verifies this stays stable
 
     Raises:
         RuntimeError: If ASP files contain syntax errors, grounding fails, or solver crashes.
@@ -167,6 +175,30 @@ def solve(program_files: list[Path], facts: str = "") -> Model:
         )
 
     if not candidates:
+        # Solver produced no models - provide diagnostics
+        from rich.console import Console
+        console = Console(stderr=True)
+
+        # Collect grounding statistics
+        stats = ctl.statistics
+        atom_count = stats.get("problem", {}).get("generator", {}).get("atoms", 0)
+        rule_count = stats.get("problem", {}).get("generator", {}).get("rules", 0)
+
+        console.print("\n[yellow]Warning: Solver produced no answer sets[/yellow]")
+        console.print(f"  • Loaded programs: {', '.join(p.name for p in program_files)}")
+        console.print(f"  • Grounded {atom_count} atoms, {rule_count} rules")
+        console.print(f"  • Inline facts: {len(facts.splitlines())} lines" if facts else "  • No inline facts")
+        console.print("\n[dim]Possible causes:[/dim]")
+        console.print("  1. Site file has no facts (empty or all comments)")
+        console.print("  2. No applicable requirements for this site")
+        console.print("  3. Optimization problem has no valid solutions")
+        console.print("  4. Program structure prevents any answer sets")
+        console.print("\n[dim]To debug:[/dim]")
+        console.print("  • Check site file for at least one fact: site(name).")
+        console.print("  • Run with --show-all to see grounded predicates")
+        console.print("  • Add #show statements to inspect intermediate predicates")
+        console.print()
+
         return best
 
     cheapest = min(m.cost[0] if m.cost else 0 for m in candidates)

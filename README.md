@@ -2,6 +2,8 @@
 
 Answer Set Programming (clingo) solving **forward** and **inverse** reasoning under partial observation.
 
+**→ New here? Start with the [5-minute quickstart](docs/quickstart.md)**
+
 ---
 
 ## The Two Problems

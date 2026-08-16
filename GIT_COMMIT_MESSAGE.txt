@@ -1,0 +1,30 @@
+Aggressive code review fixes + evidence layer implementation
+
+Conducted multi-agent code review (35 agents, 50 findings) and implemented
+16 high-value fixes including the largest architectural change (evidence layer).
+
+CRITICAL fixes:
+- Add PDF extraction validation with sanity checks
+- Make site validation fail-fast (errors not warnings)
+- Implement unified evidence layer with identity/provenance/temporal ordering
+
+HIGH priority fixes:
+- Add error handling for all clingo operations with actionable messages
+- Implement schema versioning with migration guide
+- Add progress feedback during solver runs
+- Sanitize alarm codes (escape control characters)
+- Detect ambiguous short-form IDs
+- Atomic writes for JSONL persistence
+- Citation span validation at compile time
+- Site validation during compile command
+- Exemption warnings now fail compilation
+- Type validation for site files (heuristic checks)
+
+Tests: 120 passing (up from 105)
+- Added 10 evidence model tests
+- Added 5 solver UNSAT scenario tests
+
+Breaking change: --strict now default for site validation
+Use --no-strict to restore warning-only behavior
+
+Co-authored-by: Claude Sonnet 4.5 <noreply@anthropic.com>

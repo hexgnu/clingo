@@ -7,3 +7,5 @@ data/clauses.jsonl
 data/figures.jsonl
 data/tables.jsonl
 rules/*.lp
+baml_client/
+.env
