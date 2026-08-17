@@ -22,7 +22,7 @@ from compli.store import read_jsonl
 
 ROOT = Path(__file__).resolve().parent.parent
 ONTOLOGY = [ROOT / "ontology" / "core.lp", ROOT / "ontology" / "domain.lp"]
-SITE_H = ROOT / "sites" / "den02.lp"
+SITE_H = ROOT / "examples" / "compliance" / "den02.lp"
 
 
 def _executable_source(path: Path) -> str:
@@ -46,7 +46,7 @@ def _executable_source(path: Path) -> str:
 
 @pytest.fixture(scope="module")
 def chapter_h(tmp_path_factory, clause_index):
-    rules = read_jsonl(ROOT / "data" / "golden" / "chapter_h.jsonl", Rule)
+    rules = read_jsonl(ROOT / "examples" / "compliance" / "chapter_h.jsonl", Rule)
     source = compile_mod.compile_rules(rules, clause_index, "H", "EIGuide", "6.0")
     path = tmp_path_factory.mktemp("rules_h") / "chapter_h.lp"
     path.write_text(source, encoding="utf-8")
@@ -181,7 +181,7 @@ class TestSiteValidation:
 
     def test_the_real_sites_are_clean(self, chapter_h, chapter_d_program):
         for site, program in (
-            (ROOT / "sites" / "den01.lp", chapter_d_program),
+            (ROOT / "examples" / "compliance" / "den01.lp", chapter_d_program),
             (SITE_H, chapter_h),
         ):
             problems = validate.validate_site(site, ONTOLOGY + [program])

@@ -67,7 +67,7 @@ def invoke(cwd: Path, args: list[str], stdin: str = ""):
 class TestPlan:
     def test_plan_prints_actions_and_writes_nothing(self, with_clauses):
         before = sorted(p.name for p in (with_clauses / "data").iterdir())
-        result = invoke(with_clauses, ["plan", "--site", "examples/compliance/den01.lp"])
+        result = invoke(with_clauses, ["plan", "--site", "sites/den01.lp"])
         assert result.exit_code == 0, result.output
         assert "capture actions" in result.output
         assert "sweep(bs1" in result.output
@@ -75,7 +75,7 @@ class TestPlan:
         assert before == after, "plan is documented as read-only but wrote a file"
 
     def test_plan_reports_what_capture_cannot_settle(self, with_clauses):
-        result = invoke(with_clauses, ["plan", "--site", "examples/compliance/den01.lp"])
+        result = invoke(with_clauses, ["plan", "--site", "sites/den01.lp"])
         assert "cannot be settled by capture" in result.output
         assert "D.6.4" in result.output
 
@@ -96,7 +96,7 @@ class TestInspect:
 
     def test_passing_everything_reaches_compliance(self, with_clauses):
         # 8 actions; answering "p" to every prompt and accepting every default.
-        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="p\n" * 60)
+        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="p\n" * 60)
         assert result.exit_code == 0, result.output
         assert "0 violated" in result.output
         # The two documentary obligations can never be closed by capture.
@@ -115,7 +115,7 @@ class TestInspect:
             "p\n"  # 3. polarity fine
             + "p\n" * 40  # remaining actions
         )
-        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin=script)
+        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin=script)
         assert result.exit_code == 0, result.output
         assert "2 violated" in result.output
         assert "cell(bs1,7)" in result.output
@@ -123,13 +123,13 @@ class TestInspect:
 
     def test_skipping_leaves_the_requirement_open(self, with_clauses):
         """A skipped check must never read as a pass."""
-        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="s\n" * 60)
+        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="s\n" * 60)
         assert result.exit_code == 0, result.output
         assert "0 satisfied" in result.output
         assert "0 violated" in result.output
 
     def test_quitting_early_stops_and_says_so(self, with_clauses):
-        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="q\n")
+        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="q\n")
         assert result.exit_code == 0, result.output
         assert "Stopped" in result.output
         assert "undetermined" in result.output
@@ -153,7 +153,7 @@ class TestInspect:
 
     def test_a_clause_is_quoted_once_not_per_rule(self, with_clauses):
         """D.6.6 backs three rules; quoting it in full three times drowns the instruction."""
-        result = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="q\n" * 3)
+        result = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="q\n" * 3)
         quoted = result.output.count("Designate all batteries with black ink to indicate")
         assert quoted <= 1, f"clause quoted {quoted} times"
 

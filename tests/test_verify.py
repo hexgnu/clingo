@@ -26,7 +26,7 @@ def workspace_with_obs(tmp_path, clauses, golden_rules, chapter_d_program):
     (tmp_path / "ontology").mkdir()
 
     # Copy site file
-    site_src = ROOT / "sites" / "den01.lp"
+    site_src = ROOT / "examples" / "compliance" / "den01.lp"
     site_dst = tmp_path / "sites" / "den01.lp"
     site_dst.write_text(site_src.read_text())
 
@@ -64,7 +64,7 @@ def test_verify_with_passing_observations(workspace_with_obs):
     previous = os.getcwd()
     try:
         os.chdir(workspace_with_obs)
-        result = runner.invoke(app, ["verify", "--site", "examples/compliance/den01.lp", "--observations", "observations.jsonl"])
+        result = runner.invoke(app, ["verify", "--site", "sites/den01.lp", "--observations", "observations.jsonl"])
         # May have undetermined requirements, so exit code might be 1
         # Just check it doesn't crash
         assert result.exit_code in (0, 1)
