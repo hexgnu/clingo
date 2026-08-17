@@ -88,7 +88,7 @@ def test_verify_with_violations(workspace_with_obs):
         os.chdir(workspace_with_obs)
         result = runner.invoke(app, [
             "verify",
-            "--site", "examples/compliance/den01.lp",
+            "--site", "sites/den01.lp",
             "--observations", "observations_fail.jsonl"
         ])
         assert result.exit_code == 1
@@ -105,7 +105,7 @@ def test_verify_missing_observations_file(workspace_with_obs):
         os.chdir(workspace_with_obs)
         result = runner.invoke(app, [
             "verify",
-            "--site", "examples/compliance/den01.lp",
+            "--site", "sites/den01.lp",
             "--observations", "nonexistent.jsonl"
         ])
         assert result.exit_code == 2
@@ -124,7 +124,7 @@ def test_verify_json_output(workspace_with_obs, tmp_path):
         os.chdir(workspace_with_obs)
         result = runner.invoke(app, [
             "verify",
-            "--site", "examples/compliance/den01.lp",
+            "--site", "sites/den01.lp",
             "--observations", "observations.jsonl",
             "--json-output", str(output_file)
         ])
@@ -151,7 +151,7 @@ def test_verify_empty_observations(workspace_with_obs):
         os.chdir(workspace_with_obs)
         result = runner.invoke(app, [
             "verify",
-            "--site", "examples/compliance/den01.lp",
+            "--site", "sites/den01.lp",
             "--observations", "empty.jsonl"
         ])
         # Should run but likely exit 1 due to undetermined requirements

@@ -37,7 +37,7 @@ def clause_index(clauses):
 
 @pytest.fixture(scope="session")
 def golden_rules() -> list[Rule]:
-    return read_jsonl(ROOT / "data" / "golden" / "chapter_d6.jsonl", Rule)
+    return read_jsonl(ROOT / "examples" / "compliance" / "chapter_d6.jsonl", Rule)
 
 
 @pytest.fixture(scope="session")

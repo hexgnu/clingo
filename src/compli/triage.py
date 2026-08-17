@@ -71,7 +71,7 @@ def _run(
     except RuntimeError as e:
         raise RuntimeError(
             f"Failed to load/ground triage knowledge base:\n"
-            f"  Ticket: {ticket.id}\n"
+            f"  Ticket: {ticket.ticket_id}\n"
             f"  Knowledge: {[k.stem for k in knowledge]}\n"
             f"  Error: {e}"
         ) from e
