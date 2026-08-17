@@ -67,7 +67,7 @@ def invoke(cwd: Path, args: list[str], stdin: str = ""):
 class TestPlan:
     def test_plan_prints_actions_and_writes_nothing(self, with_clauses):
         before = sorted(p.name for p in (with_clauses / "data").iterdir())
-        result = invoke(with_clauses, ["plan", "--site", "sites/den01.lp"])
+        result = invoke(with_clauses, ["plan", "--site", "examples/compliance/den01.lp"])
         assert result.exit_code == 0, result.output
         assert "capture actions" in result.output
         assert "sweep(bs1" in result.output
@@ -75,7 +75,7 @@ class TestPlan:
         assert before == after, "plan is documented as read-only but wrote a file"
 
     def test_plan_reports_what_capture_cannot_settle(self, with_clauses):
-        result = invoke(with_clauses, ["plan", "--site", "sites/den01.lp"])
+        result = invoke(with_clauses, ["plan", "--site", "examples/compliance/den01.lp"])
         assert "cannot be settled by capture" in result.output
         assert "D.6.4" in result.output
 
@@ -183,7 +183,7 @@ class TestSiteWarnings:
         bad = with_clauses / "sites" / "bad.lp"
         bad.write_text("battery_string(bs1).\ncell(bs1, 1..3).\nfuse_pannel(fp1).\n")
         try:
-            result = invoke(with_clauses, ["plan", "--site", "sites/bad.lp"])
+            result = invoke(with_clauses, ["plan", "--site", "examples/compliance/bad.lp"])
             # Now fails fast with "site error" instead of warning
             assert result.exit_code == 1
             assert "site error" in result.output

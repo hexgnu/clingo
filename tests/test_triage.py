@@ -21,8 +21,8 @@ from compli import triage
 from compli.ticket import SourceFact, Ticket
 
 ROOT = Path(__file__).resolve().parent.parent
-KB = [ROOT / "knowledge" / "vendor_codes.lp", ROOT / "knowledge" / "samsung_router.lp"]
-TICKET = ROOT / "tickets" / "samsung_4471.json"
+KB = [ROOT / "examples" / "diagnosis" / "vendor_codes.lp", ROOT / "examples" / "diagnosis" / "samsung_router.lp"]
+TICKET = ROOT / "examples" / "diagnosis" / "samsung_4471.json"
 
 # Telemetry consistent with a dark fibre: power fine, no upstream alarms, counters clean.
 DARK_FIBRE = {

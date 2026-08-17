@@ -17,7 +17,7 @@ def test_structured_error_to_dict():
         code=ErrorCode.SITE_INVALID_PREDICATE,
         message="Unknown predicate in site file",
         details={"predicate": "unknown_fact/2", "expected": "cell/2"},
-        file_path="sites/test.lp",
+        file_path="examples/compliance/test.lp",
         line=42,
     )
 
@@ -25,7 +25,7 @@ def test_structured_error_to_dict():
     assert d["code"] == "E202"
     assert d["message"] == "Unknown predicate in site file"
     assert d["details"]["predicate"] == "unknown_fact/2"
-    assert d["file"] == "sites/test.lp"
+    assert d["file"] == "examples/compliance/test.lp"
     assert d["line"] == 42
 
     # Should be JSON serializable
@@ -39,13 +39,13 @@ def test_structured_error_str():
         code=ErrorCode.SOLVER_UNSAT,
         message="Constraints are unsatisfiable",
         details={"reason": "contradictory facts"},
-        file_path="sites/broken.lp",
+        file_path="examples/compliance/broken.lp",
     )
 
     s = str(err)
     assert "[E301]" in s
     assert "unsatisfiable" in s
-    assert "sites/broken.lp" in s
+    assert "examples/compliance/broken.lp" in s
     assert "reason:" in s
 
 
