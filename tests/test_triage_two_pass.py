@@ -58,14 +58,14 @@ def test_stage1_single_world_skips_stage2():
 def test_stage2_receives_stage1_candidates():
     """Stage 2 must receive candidate/1 facts from Stage 1's worlds."""
     # Load a real ticket that produces multiple worlds
-    ticket_path = ROOT / "tickets" / "SAMS-5120.json"
+    ticket_path = ROOT / "examples" / "diagnosis" / "SAMS-5120.json"
     if not ticket_path.exists():
         pytest.skip("Test ticket not available")
 
     ticket = Ticket.load(ticket_path)
     knowledge = [
-        ROOT / "knowledge" / "vendor_codes.lp",
-        ROOT / "knowledge" / "samsung_router.lp",
+        ROOT / "examples" / "diagnosis" / "vendor_codes.lp",
+        ROOT / "examples" / "diagnosis" / "samsung_router.lp",
     ]
 
     result = triage.solve(ticket, knowledge, root=ROOT)
@@ -108,7 +108,7 @@ def test_empty_ticket_produces_result():
         facts=[],
     )
 
-    knowledge = [ROOT / "knowledge" / "samsung_router.lp"]
+    knowledge = [ROOT / "examples" / "diagnosis" / "samsung_router.lp"]
 
     result = triage.solve(ticket, knowledge, root=ROOT)
 
@@ -129,7 +129,7 @@ def test_two_pass_coordination_smoke_test():
         facts=[],
     )
 
-    knowledge = [ROOT / "knowledge" / "samsung_router.lp"]
+    knowledge = [ROOT / "examples" / "diagnosis" / "samsung_router.lp"]
 
     # Should complete both passes without crashing
     result = triage.solve(ticket, knowledge, root=ROOT)

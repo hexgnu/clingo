@@ -81,12 +81,12 @@ class TestPlan:
 
     def test_out_flag_writes_the_manifest(self, with_clauses, tmp_path):
         target = tmp_path / "m.json"
-        result = invoke(with_clauses, ["plan", "--site", "examples/compliance/den01.lp", "--out", str(target)])
+        result = invoke(with_clauses, ["plan", "--site", "sites/den01.lp", "--out", str(target)])
         assert result.exit_code == 0, result.output
         assert target.exists()
 
     def test_missing_chapter_fails_with_guidance(self, with_clauses):
-        result = invoke(with_clauses, ["plan", "--site", "examples/compliance/den01.lp", "--chapter", "Z"])
+        result = invoke(with_clauses, ["plan", "--site", "sites/den01.lp", "--chapter", "Z"])
         assert result.exit_code != 0
         assert "compile" in result.output
 
@@ -140,14 +140,14 @@ class TestInspect:
         Both are worse than asking again, so the prompt must loop.
         """
         result = invoke(
-            with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="xyzzy\np\n" + "p\n" * 60
+            with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="xyzzy\np\n" + "p\n" * 60
         )
         assert "answer p, f, s or q" in result.output
         assert result.exit_code == 0, result.output
 
     def test_nothing_is_written_to_disk(self, with_clauses):
         before = sorted(p.name for p in (with_clauses / "data").iterdir())
-        invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="p\n" * 60)
+        invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="p\n" * 60)
         after = sorted(p.name for p in (with_clauses / "data").iterdir())
         assert before == after, "inspect is single-shot but left state behind"
 
@@ -158,9 +158,9 @@ class TestInspect:
         assert quoted <= 1, f"clause quoted {quoted} times"
 
     def test_detail_lists_every_subject(self, with_clauses):
-        rolled = invoke(with_clauses, ["inspect", "--site", "examples/compliance/den01.lp"], stdin="p\n" * 60)
+        rolled = invoke(with_clauses, ["inspect", "--site", "sites/den01.lp"], stdin="p\n" * 60)
         detailed = invoke(
-            with_clauses, ["inspect", "--site", "examples/compliance/den01.lp", "--detail"], stdin="p\n" * 60
+            with_clauses, ["inspect", "--site", "sites/den01.lp", "--detail"], stdin="p\n" * 60
         )
         assert detailed.output.count("cell(bs1,") > rolled.output.count("cell(bs1,")
 
@@ -183,7 +183,7 @@ class TestSiteWarnings:
         bad = with_clauses / "sites" / "bad.lp"
         bad.write_text("battery_string(bs1).\ncell(bs1, 1..3).\nfuse_pannel(fp1).\n")
         try:
-            result = invoke(with_clauses, ["plan", "--site", "examples/compliance/bad.lp"])
+            result = invoke(with_clauses, ["plan", "--site", "sites/bad.lp"])
             # Now fails fast with "site error" instead of warning
             assert result.exit_code == 1
             assert "site error" in result.output
