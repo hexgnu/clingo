@@ -14,7 +14,7 @@ import pytest
 from compli import prove
 
 ROOT = Path(__file__).resolve().parent.parent
-SITE = ROOT / "sites" / "den01.lp"
+SITE = ROOT / "examples" / "compliance" / "den01.lp"
 
 
 @pytest.fixture(scope="module")

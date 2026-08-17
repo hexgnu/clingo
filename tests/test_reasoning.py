@@ -15,7 +15,7 @@ from compli.models import Observation
 
 ROOT = Path(__file__).resolve().parent.parent
 ONTOLOGY = [ROOT / "ontology" / "core.lp", ROOT / "ontology" / "domain.lp"]
-SITE = ROOT / "sites" / "den01.lp"
+SITE = ROOT / "examples" / "compliance" / "den01.lp"
 
 
 @pytest.fixture(scope="module")
