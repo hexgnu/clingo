@@ -46,15 +46,16 @@ def main():
     console.print("\n[dim]Loading ticket...[/dim]")
 
     # Load the ticket
-    ticket_path = Path("tickets/den_outage_live.json")
+    script_dir = Path(__file__).parent
+    ticket_path = script_dir / "den_outage_live.json"
     if not ticket_path.exists():
         console.print(f"[red]Error: {ticket_path} not found[/red]")
         sys.exit(1)
 
     ticket = Ticket.load(ticket_path)
     knowledge = [
-        Path("knowledge/vendor_codes.lp"),
-        Path("knowledge/datacenter_faults.lp")
+        script_dir / "vendor_codes.lp",
+        script_dir / "datacenter_faults.lp"
     ]
 
     # Show the raw alarms
@@ -247,10 +248,10 @@ def main():
 
     console.print("\n[bold green]Try the multi-fault scenario:[/bold green]")
     console.print(
-        "  [cyan]tickets/den_multi_fault.json[/cyan] — power + HVAC both failing\n"
+        "  [cyan]den_multi_fault.json[/cyan] — power + HVAC both failing\n"
         "  Shows how the solver keeps multiple hypotheses live until tests discriminate.\n"
     )
-    console.print("\n[bold]Read WHY_ASP.md for the full explanation.[/bold]\n")
+    console.print("\n[bold]See ../README.md for more examples.[/bold]\n")
 
 
 if __name__ == "__main__":
